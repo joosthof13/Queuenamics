@@ -1,0 +1,324 @@
+# Queuenamics
+
+**Python-native discrete-event simulation and queueing models.**
+
+Queuenamics is a Python library for building, simulating, analyzing, and experimenting with queueing systems and operational processes.
+
+The goal is to make discrete-event simulation accessible through Python code, with a simple modelling workflow:
+
+**DEFINE → CONNECT → VALIDATE → RUN → ANALYZE → EXPORT**
+
+## Features
+
+* Discrete-event simulation
+* Sources and sinks
+* FIFO, LIFO, priority, and other queue disciplines
+* Multiple servers
+* Shared and separate queues
+* Probability distributions
+* Resources
+* Routing
+* Simulation statistics
+* Multiple replications and experiments
+* Parameter sweeps
+* Model visualization
+* JSON and CSV export
+* Reproducible simulations through random seeds
+
+## Installation
+
+Install Queuenamics from PyPI:
+
+```bash
+pip install queuenamics
+```
+
+## Quick example
+
+The following example models a simple queue with customers arriving at a rate of 5 per hour and a cashier serving customers at a rate of 6 per hour.
+
+```python
+from queuenamics import (
+    Model,
+    Source,
+    Queue,
+    Server,
+    Sink,
+    Exponential,
+    FIFO,
+)
+
+customers = Source(
+    "Customers",
+    arrival=Exponential(5),
+)
+
+waiting_line = Queue(
+    "Waiting Line",
+    discipline=FIFO(),
+)
+
+cashier = Server(
+    "Cashier",
+    service=Exponential(6),
+)
+
+exit = Sink("Exit")
+
+model = Model(seed=42)
+
+model.connect(customers, waiting_line)
+model.connect(waiting_line, cashier)
+model.connect(cashier, exit)
+
+model.run(time=10_000)
+
+model.stats.print_report()
+```
+
+The model consists of:
+
+```text
+Customers → Waiting Line → Cashier → Exit
+```
+
+The simulation produces statistics such as:
+
+* average queue length
+* maximum queue length
+* average waiting time
+* server utilization
+* average service time
+* throughput
+
+## Probability distributions
+
+Queuenamics currently provides several distributions:
+
+```python
+from queuenamics import (
+    Constant,
+    Exponential,
+    Uniform,
+    Poisson,
+)
+```
+
+For example:
+
+```python
+service = Exponential(6)
+```
+
+represents an exponential distribution with a rate of 6 events per hour.
+
+A fixed service time can be represented using:
+
+```python
+service = Constant(10 / 60)
+```
+
+which represents a fixed service time of 10 minutes when simulation time is measured in hours.
+
+## Queue disciplines
+
+Queues can use different disciplines:
+
+```python
+from queuenamics import FIFO, LIFO, Priority
+
+fifo = FIFO()
+
+lifo = LIFO()
+
+priority = Priority(
+    attribute="priority",
+    highest_first=True,
+)
+```
+
+This makes it possible to model systems where some entities receive priority over others.
+
+## Multiple servers
+
+Queuenamics supports multiple servers connected to a shared queue:
+
+```python
+queue = Queue("Waiting Line")
+
+server_1 = Server(
+    "Server 1",
+    service=Exponential(6),
+)
+
+server_2 = Server(
+    "Server 2",
+    service=Exponential(6),
+)
+
+model.connect(queue, server_1)
+model.connect(queue, server_2)
+```
+
+This can be used to model pooled service systems such as:
+
+* hospital departments
+* call centers
+* bank counters
+* production systems
+* service desks
+
+## Validation
+
+Models can be validated before running:
+
+```python
+validation = model.validate()
+
+if not validation["valid"]:
+    raise RuntimeError(
+        "Model validation failed:\n"
+        + "\n".join(validation["errors"])
+    )
+```
+
+By default, `model.run()` also validates the model before starting the simulation.
+
+## Reproducibility
+
+A random seed can be supplied when creating a model:
+
+```python
+model = Model(seed=42)
+```
+
+Using the same model and seed makes stochastic simulations reproducible.
+
+## Statistics and reporting
+
+After running a simulation:
+
+```python
+report = model.stats.report()
+```
+
+A formatted report can also be printed directly:
+
+```python
+model.stats.print_report()
+```
+
+## Exporting results
+
+Results can be exported to JSON or CSV:
+
+```python
+model.stats.export("results.json")
+model.stats.export("results.csv")
+```
+
+## Experiments
+
+Queuenamics supports repeated simulations through `Experiment`:
+
+```python
+from queuenamics import Experiment
+
+experiment = Experiment(
+    model_factory=lambda seed: Model(seed=seed),
+    replications=10,
+    time=10_000,
+)
+
+results = experiment.run()
+```
+
+Experiment results can then be analyzed statistically, including means, standard deviations, and confidence intervals.
+
+## Visualization
+
+Models and simulation results can be visualized using the built-in visualization functions:
+
+```python
+from queuenamics import (
+    plot_model,
+    plot_queue_length,
+    plot_server_utilization,
+    plot_throughput,
+)
+```
+
+For example:
+
+```python
+plot_queue_length(waiting_line)
+```
+
+## Examples
+
+Example models are provided in the `examples/` directory.
+
+These demonstrate how Queuenamics can be used to model increasingly complex systems, including pooled queues, multiple servers, different client types, and priority-based systems.
+
+## Development
+
+Clone the repository and create a virtual environment:
+
+```bash
+git clone <repository-url>
+cd Queuenamics
+
+python -m venv .venv
+```
+
+Activate the environment on Windows:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+Install the package in editable mode:
+
+```bash
+pip install -e .
+```
+
+Install development dependencies:
+
+```bash
+pip install pytest
+```
+
+Run the test suite:
+
+```bash
+pytest
+```
+
+## Project structure
+
+```text
+Queuenamics/
+├── queuenamics/
+│   ├── __init__.py
+│   ├── atoms.py
+│   ├── disciplines.py
+│   ├── distributions.py
+│   ├── entities.py
+│   ├── experiment.py
+│   ├── model.py
+│   ├── report.py
+│   ├── routing.py
+│   ├── simulation.py
+│   ├── stats.py
+│   └── visualization.py
+├── examples/
+├── tests/
+├── README.md
+├── LICENSE
+└── pyproject.toml
+```
+
+## License
+
+Queuenamics is released under the MIT License. See [LICENSE](LICENSE) for details.

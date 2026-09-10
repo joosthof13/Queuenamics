@@ -1,0 +1,32 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Pytest
+.pytest_cache/
+
+# Package build / metadata
+queuenamics.egg-info/
+build/
+dist/
+
+# Project tests
+queuenamics/tests/
+
+# Examples
+examples/
+
+# IDE / editor files
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

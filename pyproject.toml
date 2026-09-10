@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "queuenamics"
+version = "0.7.3"
+description = "A simple Python-native operations research and discrete-event simulation library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+
+authors = [
+    { name = "Jozua Oosthof" }
+]
+
+dependencies = [
+    "matplotlib>=3.7",
+    "networkx>=3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/joosthof13/Queuenamics"
+Repository = "https://github.com/joosthof13/Queuenamics"
+Issues = "https://github.com/joosthof13/Queuenamics/issues"
+
+[tool.setuptools.packages.find]
+include = ["queuenamics*"]
