@@ -31,6 +31,9 @@ from queuenamics.routing import (
     Router,
     FirstAvailable,
     RandomAvailable,
+    EntityTypeRouter,
+    AttributeRouter,
+    ConditionalRouter,
 )
 
 from queuenamics.experiment import (
@@ -46,7 +49,7 @@ from queuenamics.visualization import (
 )
 
 
-__version__ = "0.7.5"
+__version__ = "0.7.6"
 
 
 __all__ = [
@@ -79,4 +82,7 @@ __all__ = [
     "plot_queue_length",
     "plot_server_utilization",
     "plot_throughput",
+    "EntityTypeRouter",
+    "AttributeRouter",
+    "ConditionalRouter",
 ]

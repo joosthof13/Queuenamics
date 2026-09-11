@@ -43,6 +43,7 @@ Queuenamics provides the building blocks needed to represent these systems and s
 * What happens when service times become more variable?
 * How does a priority rule affect waiting times?
 * What happens when several servers share a queue?
+* How should different types of entities be routed?
 * How sensitive is system performance to a particular parameter?
 
 ---
@@ -67,6 +68,8 @@ Examples include:
 Entities can have an `entity_type` and arbitrary attributes.
 
 ```python
+from queuenamics import Entity
+
 entity = Entity(
     entity_type="urgent",
     creation_time=0,
@@ -78,6 +81,8 @@ entity.attributes["priority"] = 2
 Sources can create entities with these properties automatically:
 
 ```python
+from queuenamics import Exponential, Source
+
 patients = Source(
     "Patients",
     arrival=Exponential(20),
@@ -86,7 +91,7 @@ patients = Source(
 )
 ```
 
-Each generated entity receives its own copy of the attributes.
+Each generated entity receives its own copy of the source attributes.
 
 ---
 
@@ -108,7 +113,7 @@ Atoms can be connected to form a process network.
 Source → Queue → Server → Sink
 ```
 
-More complex models can contain multiple paths, shared queues, multiple servers, and different routing decisions.
+More complex models can contain multiple paths, shared queues, multiple servers, resources, and different routing decisions.
 
 ---
 
@@ -138,6 +143,7 @@ A model can then be validated and simulated:
 
 ```python
 model.validate()
+
 model.run(time=10_000)
 ```
 
@@ -147,34 +153,38 @@ model.run(time=10_000)
 
 Queuenamics currently supports:
 
-* Discrete-event simulation
-* Entity creation and flow
-* Entity types and attributes
-* Sources and sinks
+* discrete-event simulation
+* entity creation and flow
+* entity types and attributes
+* sources and sinks
 * FIFO queues
 * LIFO queues
-* Priority queues
-* Shortest-processing-time queues
-* Multiple servers
-* Shared queues
-* Separate queues
-* Heterogeneous servers
-* Resources with capacities
-* Routing
-* Random routing
-* Probability distributions
-* Reproducible simulations through random seeds
-* Queue-length statistics
-* Waiting-time statistics
-* Service-time statistics
-* Server utilization
-* Throughput measurements
-* Model validation
-* Multiple replications
-* Experiments
-* Parameter sweeps
-* Confidence intervals
-* Model visualization
+* priority queues
+* shortest-processing-time queues
+* multiple servers
+* shared queues
+* separate queues
+* heterogeneous servers
+* resources with capacities
+* first-available routing
+* random routing
+* entity-type routing
+* attribute-based routing
+* conditional routing
+* probability distributions
+* reproducible simulations through random seeds
+* queue-length statistics
+* waiting-time statistics
+* service-time statistics
+* server utilization
+* throughput measurements
+* model validation
+* multiple replications
+* experiments
+* parameter sweeps
+* confidence intervals
+* warm-up periods
+* model visualization
 * JSON export
 * CSV export
 
@@ -194,6 +204,12 @@ After installation:
 import queuenamics
 
 print(queuenamics.__version__)
+```
+
+For version 0.7.6, this should print:
+
+```text
+0.7.6
 ```
 
 ---
@@ -538,7 +554,7 @@ Resources represent limited-capacity assets that can be acquired and released.
 ```python
 from queuenamics import Resource
 
-resource = Resource(
+technicians = Resource(
     "Technicians",
     capacity=3,
 )
@@ -550,17 +566,33 @@ Resources can be associated with servers:
 server = Server(
     "Repair Station",
     service=Exponential(4),
-    resource=resource,
+    resource=technicians,
 )
 ```
 
-This makes it possible to represent systems where service depends on a limited shared resource.
+When the server starts processing an entity, it acquires a resource unit. When service is completed, the resource is released.
+
+This makes it possible to represent systems where service depends on a limited shared resource, such as:
+
+* technicians
+* nurses
+* doctors
+* forklifts
+* machines
+* operating rooms
+* loading equipment
+
+A resource tracks its capacity, current busy count, available capacity, and utilization.
 
 ---
 
 # Routing
 
-Queuenamics supports routing entities to available downstream components.
+Queuenamics supports several routing strategies for deciding which downstream connection should receive an entity.
+
+Routing occurs through a queue's `router`.
+
+## First available
 
 The default router is:
 
@@ -576,7 +608,9 @@ queue = Queue(
 )
 ```
 
-A queue connected to multiple available servers can select the first available destination.
+When the queue has multiple server outputs, the first available destination can receive the selected entity.
+
+## Random available
 
 Randomized routing is also available:
 
@@ -590,6 +624,162 @@ queue = Queue(
 ```
 
 Random routing uses the model's seeded random-number generator, so it remains reproducible.
+
+## Entity-type routing
+
+Entities can be routed according to their `entity_type`.
+
+```python
+from queuenamics import EntityTypeRouter
+
+queue = Queue(
+    "Customer Queue",
+    router=EntityTypeRouter(
+        routes={
+            "regular": 0,
+            "urgent": 1,
+        },
+    ),
+)
+```
+
+The route values correspond to the queue's output connection indexes.
+
+For example:
+
+```python
+regular = Source(
+    "Regular Customers",
+    arrival=Exponential(10),
+    entity_type="regular",
+)
+
+urgent = Source(
+    "Urgent Customers",
+    arrival=Exponential(3),
+    entity_type="urgent",
+)
+```
+
+If the queue is connected as:
+
+```python
+model.connect(queue, regular_server)
+model.connect(queue, urgent_server)
+```
+
+then:
+
+```text
+regular → output 0 → regular_server
+urgent  → output 1 → urgent_server
+```
+
+An optional default route can handle unknown entity types:
+
+```python
+router = EntityTypeRouter(
+    routes={
+        "regular": 0,
+        "urgent": 1,
+    },
+    default=0,
+)
+```
+
+If no route exists and no default is specified, the entity remains in the queue.
+
+## Attribute routing
+
+Entities can also be routed using arbitrary attributes.
+
+```python
+from queuenamics import AttributeRouter
+
+queue = Queue(
+    "Customer Queue",
+    router=AttributeRouter(
+        attribute="customer_type",
+        routes={
+            "regular": 0,
+            "vip": 1,
+        },
+    ),
+)
+```
+
+Entities might be created as:
+
+```python
+regular = Source(
+    "Regular",
+    arrival=Exponential(10),
+    attributes={
+        "customer_type": "regular",
+    },
+)
+
+vip = Source(
+    "VIP",
+    arrival=Exponential(2),
+    attributes={
+        "customer_type": "vip",
+    },
+)
+```
+
+This allows one queue to route different customer classes to different downstream processes.
+
+## Conditional routing
+
+For more flexible routing logic, `ConditionalRouter` accepts user-defined conditions.
+
+```python
+from queuenamics import ConditionalRouter
+
+router = ConditionalRouter(
+    conditions=[
+        (
+            lambda entity:
+            entity.attributes.get("priority", 0) >= 3,
+            0,
+        ),
+    ],
+    default=1,
+)
+```
+
+The first condition that evaluates to `True` determines the destination.
+
+Multiple conditions can be specified:
+
+```python
+router = ConditionalRouter(
+    conditions=[
+        (
+            lambda entity:
+            entity.attributes.get("priority", 0) >= 3,
+            0,
+        ),
+        (
+            lambda entity:
+            entity.attributes.get("priority", 0) >= 2,
+            1,
+        ),
+    ],
+    default=2,
+)
+```
+
+This makes it possible to implement custom routing rules without creating a new routing class.
+
+## Destination availability
+
+Entity-based routing respects destination availability.
+
+If an entity's selected destination is currently unavailable, the entity remains in the queue rather than being removed and lost.
+
+This is particularly important when routing entities to busy servers or resource-constrained servers.
 
 ---
 
@@ -611,9 +801,33 @@ patients = Source(
 )
 ```
 
-Attributes can then be used by queue disciplines such as `Priority`.
+Attributes can then be used by queue disciplines such as `Priority`:
+
+```python
+queue = Queue(
+    "Priority Queue",
+    discipline=Priority(
+        attribute="priority",
+        highest_first=True,
+    ),
+)
+```
+
+They can also be used by routing components such as `AttributeRouter` and `ConditionalRouter`.
 
 This allows the model to distinguish between different classes of entities without requiring separate models.
+
+For example:
+
+```text
+                    ┌→ Regular Server
+                    │
+Source → Queue ─────┼→ VIP Server
+                    │
+                    └→ Priority Server
+```
+
+where the destination is determined by information carried by each entity.
 
 ---
 
@@ -693,13 +907,15 @@ Stochastic simulations can be reproduced using a random seed.
 model = Model(seed=42)
 ```
 
-The model's random-number generator is shared by the stochastic components of the model, including:
+The model's random-number generator is shared by stochastic components of the model, including:
 
 * probability distributions
 * random queue disciplines
 * random routing
 
 This allows experiments to be repeated under controlled random conditions.
+
+For example, two models constructed with the same seed and the same configuration can produce the same stochastic sequence.
 
 ---
 
@@ -749,7 +965,8 @@ A single simulation run is often not enough for stochastic systems.
 Queuenamics provides `Experiment` for repeated simulation runs.
 
 ```python
-from queuenamics import Experiment
+from queuenamics import Experiment, Model
+
 
 def create_model(seed):
     model = Model(seed=seed)
@@ -757,6 +974,7 @@ def create_model(seed):
     # Build the model here.
 
     return model
+
 
 experiment = Experiment(
     model_factory=create_model,
@@ -789,6 +1007,7 @@ For example, a study could compare:
 
 ```text
 Number of servers:
+
 1
 2
 3
@@ -799,6 +1018,7 @@ or:
 
 ```text
 Arrival rate:
+
 10/hour
 15/hour
 20/hour
@@ -806,7 +1026,13 @@ Arrival rate:
 30/hour
 ```
 
-Parameter sweeps are useful for capacity planning, sensitivity analysis, and comparing alternative system configurations.
+Parameter sweeps are useful for:
+
+* capacity planning
+* sensitivity analysis
+* comparing alternative system configurations
+* identifying bottlenecks
+* evaluating operational decisions
 
 ---
 
@@ -866,11 +1092,15 @@ This plots the evolution of queue length over simulation time.
 plot_server_utilization(cashier)
 ```
 
+This visualizes server utilization.
+
 ## Throughput
 
 ```python
 plot_throughput(exit)
 ```
+
+This visualizes throughput information for a sink.
 
 The visualization functions can also be used without displaying a graphical window:
 
@@ -957,8 +1187,8 @@ The resulting structure is:
 Regular ──┐
           ├──→ Priority Queue ──┬──→ Server 1 ──┐
 Urgent ───┘                     └──→ Server 2 ──┤
-                                                 ↓
-                                               Exit
+                                                ↓
+                                              Exit
 ```
 
 This demonstrates:
@@ -974,6 +1204,88 @@ This demonstrates:
 
 ---
 
+# Example: Entity-based routing
+
+The following example demonstrates the main feature introduced in version 0.7.6.
+
+```python
+from queuenamics import (
+    Model,
+    Source,
+    Queue,
+    Server,
+    Sink,
+    Constant,
+    EntityTypeRouter,
+)
+
+regular = Source(
+    "Regular Customers",
+    arrival=Constant(1),
+    entity_type="regular",
+)
+
+priority = Source(
+    "Priority Customers",
+    arrival=Constant(2),
+    entity_type="priority",
+)
+
+queue = Queue(
+    "Customer Queue",
+    router=EntityTypeRouter(
+        routes={
+            "regular": 0,
+            "priority": 1,
+        },
+    ),
+)
+
+regular_server = Server(
+    "Regular Counter",
+    service=Constant(0.8),
+)
+
+priority_server = Server(
+    "Priority Counter",
+    service=Constant(0.5),
+)
+
+regular_exit = Sink("Regular Exit")
+priority_exit = Sink("Priority Exit")
+
+model = Model(seed=42)
+
+model.connect(regular, queue)
+model.connect(priority, queue)
+
+model.connect(queue, regular_server)
+model.connect(queue, priority_server)
+
+model.connect(regular_server, regular_exit)
+model.connect(priority_server, priority_exit)
+
+model.run(
+    time=100,
+    progress=False,
+)
+
+model.stats.print_report()
+```
+
+The resulting structure is:
+
+```text
+Regular Customers ──┐
+                    ├──→ Customer Queue ──→ Regular Counter ──→ Regular Exit
+Priority Customers ─┘              │
+                                   └──────→ Priority Counter ─→ Priority Exit
+```
+
+This demonstrates how information attached to entities can directly determine their path through the model.
+
+---
+
 # Examples
 
 The `examples/` directory contains complete example models.
@@ -986,9 +1298,16 @@ Examples are intended to demonstrate how Queuenamics can be used to build increa
 * multiple server configurations
 * heterogeneous service times
 * different entity types
+* entity attributes
 * priority-based queues
-* routing
-* experiments and parameter studies
+* entity-based routing
+* attribute-based routing
+* conditional routing
+* resources
+* experiments
+* parameter studies
+* visualization
+* result export
 
 The examples can also serve as starting points for your own models.
 
@@ -1000,7 +1319,7 @@ Queuenamics is intentionally **Python-native**.
 
 Rather than building a model primarily through a graphical interface, the model is represented directly as Python code.
 
-This provides several advantages:
+This provides several advantages.
 
 ### Reproducibility
 
@@ -1034,18 +1353,23 @@ The current focus is on building a reliable and extensible core for queueing and
 
 The API is intentionally kept relatively small while the underlying architecture develops.
 
-Current development areas include:
+**Version 0.7.6 focuses on entity-aware routing.**
 
-* richer entity-based routing
-* more advanced statistics
-* improved resource handling
-* more flexible server and queue behaviour
-* improved experiment and parameter-sweep functionality
-* expanded visualization
-* performance improvements
-* documentation and examples
+This release allows entity information to influence the path an entity takes through the model using:
 
-The project is currently best suited to **learning, experimentation, research, prototyping, and operational-analysis models**.
+* `EntityTypeRouter`
+* `AttributeRouter`
+* `ConditionalRouter`
+
+The current project is best suited to:
+
+* learning
+* experimentation
+* research
+* prototyping
+* operational analysis
+* queueing-system studies
+* discrete-event simulation
 
 ---
 
@@ -1055,7 +1379,6 @@ Clone the repository:
 
 ```bash
 git clone https://github.com/joosthof13/Queuenamics.git
-
 cd Queuenamics
 ```
 
@@ -1116,9 +1439,10 @@ Queuenamics/
 │   ├── stats.py
 │   └── visualization.py
 │
-├── examples/
+├── queuenamics/
+│   └── tests/
 │
-├── tests/
+├── examples/
 │
 ├── README.md
 ├── LICENSE
@@ -1131,7 +1455,7 @@ Queuenamics/
 
 Queuenamics uses a small number of Python dependencies for its core functionality and visualization:
 
-* [Matplotlib](https://matplotlib.org/) — plotting
+* [Matplotlib](https://matplotlib.org/) — plotting and visualization
 * [NetworkX](https://networkx.org/) — model-network visualization
 
 The package requires:
@@ -1153,12 +1477,19 @@ Useful areas for contribution include:
 * probability distributions
 * statistics
 * simulation performance
+* resource handling
 * visualization
 * documentation
 * examples
 * tests
 
 When contributing code, please include tests for new functionality where appropriate.
+
+Before submitting changes, run:
+
+```bash
+python -m pytest -q
+```
 
 ---
 
@@ -1176,17 +1507,17 @@ The long-term goal is to develop Queuenamics into a flexible Python-native frame
 
 Planned areas include:
 
-* richer entity routing
-* type-dependent routing
+* richer entity-aware statistics
+* type-dependent analysis
 * more advanced resource constraints
-* expanded statistics
+* expanded experiment workflows
 * improved warm-up and steady-state analysis
-* larger experiment workflows
 * sensitivity analysis
 * improved visualization
 * performance optimization
 * more comprehensive documentation
 * additional modelling examples
+* more advanced routing and process logic
 
 The guiding principle remains:
 
@@ -1194,6 +1525,6 @@ The guiding principle remains:
 
 ---
 
-## Queuenamics in one sentence
+# Queuenamics in one sentence
 
 > **Queuenamics lets you build operational processes as Python models, simulate them as discrete events, and analyze the resulting system performance.**

@@ -207,12 +207,39 @@ class Queue(Atom):
         if self.is_empty():
             return
 
-        connection = self.router.select(self.outputs)
+        entity = self.discipline.select(self.entities)
+
+        if entity is None:
+            return
+
+        connection = self.router.select(
+            self.outputs,
+            entity=entity,
+        )
 
         if connection is None:
             return
 
-        entity = self.remove()
+        destination = connection.destination
+
+        if (
+            hasattr(destination, "available")
+            and not destination.available()
+        ):
+            return
+
+        self.entities.remove(entity)
+
+        current_time = (
+            self.model.simulation.time
+            if self.model is not None
+            else 0.0
+        )
+
+        self.stats.queue_length.update(
+            self.length(),
+            current_time,
+        )
 
         connection.send(entity)
 
@@ -283,26 +310,28 @@ class Server(Atom):
 
     def receive(self, entity):
         if self.busy:
-            raise RuntimeError(
-                f"Server {self.name!r} is busy"
-            )
+            return False
 
         if self.resource is not None:
             if not self.resource.acquire():
                 return False
 
+        current_time = self.model.simulation.time
+
+        if entity.queue_entry_time is not None:
+            waiting_time = current_time - entity.queue_entry_time
+            self.stats.waiting_time.record(waiting_time)
+            entity.queue_entry_time = None
+
         self.current_entity = entity
         self.busy = True
-
-        self.service_start_time = (
-            self.model.simulation.time
-        )
+        self.service_start_time = current_time
 
         delay = self.service.sample()
 
         self.model.simulation.schedule(
-            time=self.model.simulation.time + delay,
-            action=self.complete
+            time=current_time + delay,
+            action=self.complete,
         )
 
         return True
@@ -345,7 +374,13 @@ class Server(Atom):
                     return
 
     def available(self):
-        return not self.busy
+        if self.busy:
+            return False
+
+        if self.resource is not None:
+            return self.resource.available()
+
+        return True
     
     @property
     def utilization(self):

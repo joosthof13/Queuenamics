@@ -1,0 +1,72 @@
+{
+    "simulation_time": 10000,
+    "sources": {
+        "Regular Customers": {
+            "created": 119491
+        },
+        "Urgent Customers": {
+            "created": 29888
+        },
+        "VIP Customers": {
+            "created": 30006
+        }
+    },
+    "queues": {
+        "Priority Queue": {
+            "average_length": 37.74926426746569,
+            "maximum_length": 194,
+            "average_waiting_time": 2.1045078614590444
+        },
+        "FIFO Queue": {
+            "average_length": 34689.96993322247,
+            "maximum_length": 69581,
+            "average_waiting_time": 3020.1390470318274
+        },
+        "LIFO Queue": {
+            "average_length": 14314.167743754684,
+            "maximum_length": 28820,
+            "average_waiting_time": 0.11127943953372428
+        },
+        "Shortest Processing Time Queue": {
+            "average_length": 13637.77744127146,
+            "maximum_length": 27685,
+            "average_waiting_time": 2261.8157621370833
+        }
+    },
+    "servers": {
+        "Fast Server": {
+            "processed": 79997,
+            "utilization": 0.9999991557053655,
+            "average_service_time": 0.12500338366204727
+        },
+        "Slow Server": {
+            "processed": 42748,
+            "utilization": 0.9964681936055807,
+            "average_service_time": 0.23309801860275137
+        },
+        "Fixed Service": {
+            "processed": 59999,
+            "utilization": 0.9999944745221608,
+            "average_service_time": 0.16666666666665636
+        },
+        "Machine Server": {
+            "processed": 49912,
+            "utilization": 0.9999914994976059,
+            "average_service_time": 0.20034943565167865
+        }
+    },
+    "sinks": {
+        "Completed": {
+            "completed": 182744,
+            "throughput": 18.2744
+        },
+        "Secondary Exit": {
+            "completed": 49912,
+            "throughput": 4.9912
+        },
+        "LIFO Exit": {
+            "completed": 59999,
+            "throughput": 5.9999
+        }
+    }
+}
