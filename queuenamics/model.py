@@ -63,6 +63,12 @@ class Model:
         if hasattr(atom, "service") and hasattr(atom.service, "set_rng"):
             atom.service.set_rng(self.rng)
 
+        if hasattr(atom, "discipline") and hasattr(atom.discipline, "set_rng"):
+            atom.discipline.set_rng(self.rng)
+
+        if hasattr(atom, "router") and hasattr(atom.router, "set_rng"):
+            atom.router.set_rng(self.rng)
+
     def run(self, time, validate=True, progress=True):
 
         if validate:
