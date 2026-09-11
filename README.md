@@ -265,7 +265,7 @@ These demonstrate how Queuenamics can be used to model increasingly complex syst
 Clone the repository and create a virtual environment:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/joosthof13/Queuenamics.git
 cd Queuenamics
 
 python -m venv .venv
