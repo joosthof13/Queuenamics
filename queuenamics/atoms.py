@@ -542,9 +542,7 @@ class Server(Atom):
         if simulation_time <= 0:
             return 0.0
 
-        return self.stats.server_occupancy.mean(
-            simulation_time
-        )
+        return self.busy_time / simulation_time
 
     @property
     def busy_time_exact(self):

@@ -507,7 +507,7 @@ class StatisticsReport:
 
             for category, atoms in report.items():
 
-                if category == "simulation_time":
+                if not isinstance(atoms, dict):
                     continue
 
                 for name, statistics in atoms.items():
