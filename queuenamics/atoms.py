@@ -27,13 +27,11 @@ class Atom:
 
 
 class Source(Atom):
-
-    def __init__(self, name, arrival, entity_type=None):
+    def __init__(self, name, arrival, entity_type=None, attributes=None):
         super().__init__(name)
-
         self.arrival = arrival
         self.entity_type = entity_type
-
+        self.attributes = dict(attributes) if attributes is not None else {}
         self.active = False
         self.entities_created = 0
 
@@ -52,11 +50,10 @@ class Source(Atom):
             entity_type=self.entity_type,
             creation_time=self.model.simulation.time
         )
+        entity.attributes = dict(self.attributes)
 
         self.entities_created += 1
-
         self.send(entity)
-
         self._schedule_next()
 
     def _schedule_next(self):
@@ -70,11 +67,11 @@ class Source(Atom):
             action=self.generate
         )
 
-    def reset_statistics(self):
-        self.entities_created = 0
-
     def reset(self):
         self.active = False
+        self.entities_created = 0
+
+    def reset_statistics(self):
         self.entities_created = 0
 
 class Sink(Atom):
