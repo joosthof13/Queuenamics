@@ -48,8 +48,16 @@ from queuenamics.visualization import (
     plot_throughput,
 )
 
+from queuenamics.stats import (
+    Statistic,
+    Statistics,
+    TimeWeightedStatistic,
+    ReplicationStatistic,
+    ReplicationResults,
+)
 
-__version__ = "0.8.1"
+
+__version__ = "0.8.2"
 
 
 __all__ = [
@@ -76,13 +84,18 @@ __all__ = [
     "Router",
     "FirstAvailable",
     "RandomAvailable",
+    "EntityTypeRouter",
+    "AttributeRouter",
+    "ConditionalRouter",
     "Experiment",
     "ParameterSweep",
+    "Statistic",
+    "Statistics",
+    "TimeWeightedStatistic",
+    "ReplicationStatistic",
+    "ReplicationResults",
     "plot_model",
     "plot_queue_length",
     "plot_server_utilization",
     "plot_throughput",
-    "EntityTypeRouter",
-    "AttributeRouter",
-    "ConditionalRouter",
 ]

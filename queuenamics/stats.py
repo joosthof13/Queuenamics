@@ -3,7 +3,19 @@ from statistics import NormalDist
 
 
 class Statistic:
-    """A scalar statistic with optional entity-aware grouping."""
+    """
+    A scalar statistic with optional entity-aware grouping.
+
+    Notes
+    -----
+    ``variance`` and ``standard_deviation`` refer to population statistics
+    and therefore use N as the denominator.
+
+    For sample statistics, use ``sample_variance`` and
+    ``sample_standard_deviation``, which use N - 1.
+
+    Empty statistics return ``0.0`` for numerical summary properties.
+    """
 
     def __init__(self):
         self.count = 0
@@ -12,6 +24,17 @@ class Statistic:
         self.values = []
 
     def record(self, value, entity=None):
+        """Record one observation.
+
+        Parameters
+        ----------
+        value : float
+            The observed value.
+        entity : Entity, optional
+            Entity associated with the observation. If supplied, the
+            observation is automatically included in entity-type and
+            entity-attribute groups.
+        """
         self.count += 1
         self.total += value
         self.values.append(value)
@@ -31,10 +54,8 @@ class Statistic:
                 )
 
     def _record_group(self, group, key, value):
-        data = self._groups.setdefault(
-            group,
-            {},
-        )
+        """Record an observation in an internal group."""
+        data = self._groups.setdefault(group, {})
 
         bucket = data.setdefault(
             key,
@@ -51,6 +72,7 @@ class Statistic:
 
     @property
     def mean(self):
+        """Return the arithmetic mean."""
         if self.count == 0:
             return 0.0
 
@@ -58,6 +80,7 @@ class Statistic:
 
     @property
     def minimum(self):
+        """Return the minimum observation."""
         if not self.values:
             return 0.0
 
@@ -65,13 +88,44 @@ class Statistic:
 
     @property
     def maximum(self):
+        """Return the maximum observation."""
         if not self.values:
             return 0.0
 
         return max(self.values)
 
     @property
-    def variance(self):
+    def median(self):
+        """Return the 50th percentile (median)."""
+        return self.percentile(50)
+
+    @property
+    def q1(self):
+        """Return the first quartile (25th percentile)."""
+        return self.percentile(25)
+
+    @property
+    def q2(self):
+        """Return the second quartile (50th percentile)."""
+        return self.percentile(50)
+
+    @property
+    def q3(self):
+        """Return the third quartile (75th percentile)."""
+        return self.percentile(75)
+
+    @property
+    def iqr(self):
+        """Return the interquartile range (Q3 - Q1)."""
+        return self.q3 - self.q1
+
+    @property
+    def population_variance(self):
+        """
+        Return the population variance.
+
+        The denominator is N.
+        """
         if self.count == 0:
             return 0.0
 
@@ -83,17 +137,77 @@ class Statistic:
         ) / self.count
 
     @property
-    def standard_deviation(self):
-        return self.variance ** 0.5
+    def sample_variance(self):
+        """
+        Return the sample variance.
 
-    def percentile(self, percentage):
-        if not self.values:
+        The denominator is N - 1. Returns 0.0 when fewer than two
+        observations are available.
+        """
+        if self.count < 2:
             return 0.0
 
+        mean = self.mean
+
+        return sum(
+            (value - mean) ** 2
+            for value in self.values
+        ) / (self.count - 1)
+
+    @property
+    def variance(self):
+        """
+        Return the population variance.
+
+        This property is retained for backwards compatibility.
+        """
+        return self.population_variance
+
+    @property
+    def population_standard_deviation(self):
+        """Return the population standard deviation."""
+        return sqrt(self.population_variance)
+
+    @property
+    def sample_standard_deviation(self):
+        """Return the sample standard deviation."""
+        return sqrt(self.sample_variance)
+
+    @property
+    def standard_deviation(self):
+        """
+        Return the population standard deviation.
+
+        This property is retained for backwards compatibility.
+        """
+        return self.population_standard_deviation
+
+    def percentile(self, percentage):
+        """
+        Return a percentile using linear interpolation.
+
+        Parameters
+        ----------
+        percentage : float
+            Percentile between 0 and 100 inclusive.
+
+        Returns
+        -------
+        float
+            The requested percentile.
+
+        Raises
+        ------
+        ValueError
+            If ``percentage`` is outside the range 0 to 100.
+        """
         if not 0 <= percentage <= 100:
             raise ValueError(
                 "percentile must be between 0 and 100"
             )
+
+        if not self.values:
+            return 0.0
 
         values = sorted(self.values)
 
@@ -122,8 +236,13 @@ class Statistic:
         )
 
     def group_by(self, group):
-        """Return full statistics grouped by entity type/attribute."""
+        """
+        Return statistics grouped by entity type or entity attribute.
 
+        The returned dictionary preserves the existing Queuenamics API.
+        Each group contains the same major descriptive statistics as
+        ``Statistic``.
+        """
         groups = self._groups.get(group, {})
 
         result = {}
@@ -137,21 +256,40 @@ class Statistic:
                 mean = 0.0
                 minimum = 0.0
                 maximum = 0.0
-                variance = 0.0
-                standard_deviation = 0.0
+                population_variance = 0.0
+                sample_variance = 0.0
             else:
                 mean = total / count
                 minimum = min(values)
                 maximum = max(values)
 
-                variance = sum(
+                population_variance = sum(
                     (value - mean) ** 2
                     for value in values
                 ) / count
 
-                standard_deviation = variance ** 0.5
+                if count < 2:
+                    sample_variance = 0.0
+                else:
+                    sample_variance = sum(
+                        (value - mean) ** 2
+                        for value in values
+                    ) / (count - 1)
+
+            population_standard_deviation = sqrt(
+                population_variance
+            )
+
+            sample_standard_deviation = sqrt(
+                sample_variance
+            )
 
             def percentile(percentage):
+                if not 0 <= percentage <= 100:
+                    raise ValueError(
+                        "percentile must be between 0 and 100"
+                    )
+
                 if not values:
                     return 0.0
 
@@ -181,36 +319,49 @@ class Statistic:
                     )
                 )
 
+            q1 = percentile(25)
+            median = percentile(50)
+            q3 = percentile(75)
+
             result[key] = {
                 "count": count,
                 "total": total,
                 "mean": mean,
                 "minimum": minimum,
                 "maximum": maximum,
-                "variance": variance,
+                "median": median,
+                "q1": q1,
+                "q2": median,
+                "q3": q3,
+                "iqr": q3 - q1,
+                "variance": population_variance,
+                "population_variance": population_variance,
+                "sample_variance": sample_variance,
                 "standard_deviation":
-                    standard_deviation,
-                "percentile_50":
-                    percentile(50),
-                "percentile_90":
-                    percentile(90),
-                "percentile_95":
-                    percentile(95),
-                "percentile_99":
-                    percentile(99),
+                    population_standard_deviation,
+                "population_standard_deviation":
+                    population_standard_deviation,
+                "sample_standard_deviation":
+                    sample_standard_deviation,
+                "percentile_25": q1,
+                "percentile_50": median,
+                "percentile_75": q3,
+                "percentile_90": percentile(90),
+                "percentile_95": percentile(95),
+                "percentile_99": percentile(99),
             }
 
         return result
 
     def grouped_count(self, group):
-        """Return counts grouped by entity type/attribute."""
-
+        """Return observation counts grouped by entity type or attribute."""
         return {
             key: data["count"]
             for key, data in self._groups.get(group, {}).items()
         }
 
     def reset(self):
+        """Remove all observations and grouped statistics."""
         self.count = 0
         self.total = 0.0
         self._groups.clear()
@@ -221,9 +372,9 @@ class TimeWeightedStatistic:
     """
     A statistic whose value changes at discrete simulation events.
 
-    The statistic stores the complete state-change history, allowing
-    exact calculation of time-weighted quantities without periodic
-    sampling.
+    The statistic stores state-change history and calculates quantities
+    exactly from the area under the state curve. No periodic sampling
+    is required.
     """
 
     def __init__(self):
@@ -235,6 +386,14 @@ class TimeWeightedStatistic:
         self.history = [(0.0, 0.0)]
 
     def update(self, value, time):
+        """
+        Update the statistic at a simulation time.
+
+        Raises
+        ------
+        ValueError
+            If ``time`` is earlier than the previous update time.
+        """
         if time < self.last_time:
             raise ValueError(
                 "TimeWeightedStatistic cannot move backwards in time."
@@ -252,6 +411,9 @@ class TimeWeightedStatistic:
         self.history.append((time, value))
 
     def mean(self, until):
+        """
+        Return the exact time-weighted mean up to ``until``.
+        """
         elapsed = until - self.start_time
 
         if elapsed <= 0:
@@ -267,7 +429,7 @@ class TimeWeightedStatistic:
 
     def total_time_where(self, predicate, until):
         """
-        Return the amount of time for which predicate(value) is true.
+        Return the amount of time for which ``predicate(value)`` is true.
         """
         elapsed = until - self.start_time
 
@@ -275,7 +437,6 @@ class TimeWeightedStatistic:
             return 0.0
 
         total = 0.0
-
         history = self.history
 
         for index, (time, value) in enumerate(history):
@@ -305,9 +466,11 @@ class TimeWeightedStatistic:
         )
 
     def time_zero(self, until):
+        """Return time spent at zero."""
         return self.time_at(0, until)
 
     def time_nonzero(self, until):
+        """Return time spent at a nonzero value."""
         return self.total_time_where(
             lambda current: current != 0,
             until,
@@ -326,11 +489,10 @@ class TimeWeightedStatistic:
 
     def period_durations(self, predicate, until):
         """
-        Return durations of contiguous periods where predicate(value)
+        Return durations of contiguous periods where ``predicate(value)``
         is true.
 
-        The final period is included up to `until`, which means an
-        ongoing busy/idle period is correctly represented.
+        An ongoing final period is included up to ``until``.
         """
         periods = []
         period_start = None
@@ -361,12 +523,14 @@ class TimeWeightedStatistic:
         return periods
 
     def periods_nonzero(self, until):
+        """Return durations of all contiguous nonzero periods."""
         return self.period_durations(
             lambda value: value != 0,
             until,
         )
 
     def reset(self, time=0.0, current=0.0):
+        """Reset the statistic at a specified simulation time and value."""
         self.area = 0.0
         self.last_time = time
         self.current = current
@@ -376,6 +540,13 @@ class TimeWeightedStatistic:
 
 
 class Statistics:
+    """
+    Collection of standard simulation statistics.
+
+    Includes entity-based statistics such as waiting and service time,
+    as well as time-weighted queue and server statistics.
+    """
+
     def __init__(self):
         self.waiting_time = Statistic()
         self.service_time = Statistic()
@@ -386,6 +557,7 @@ class Statistics:
         self.server_occupancy = TimeWeightedStatistic()
 
     def reset(self):
+        """Reset all contained statistics."""
         self.waiting_time.reset()
         self.service_time.reset()
         self.other_time.reset()
@@ -399,9 +571,44 @@ class ReplicationStatistic:
     """
     Statistics calculated across independent simulation replications.
 
-    The standard deviation is the sample standard deviation and the
-    confidence interval uses Student's t distribution for 95% CIs.
+    The standard deviation is a sample standard deviation using N - 1.
+
+    Confidence intervals use Student's t distribution. The confidence
+    interval level can be selected with ``confidence_interval()``.
     """
+
+    _T_90 = {
+        1: 6.314,
+        2: 2.920,
+        3: 2.353,
+        4: 2.132,
+        5: 2.015,
+        6: 1.943,
+        7: 1.895,
+        8: 1.860,
+        9: 1.833,
+        10: 1.812,
+        11: 1.796,
+        12: 1.782,
+        13: 1.771,
+        14: 1.761,
+        15: 1.753,
+        16: 1.746,
+        17: 1.740,
+        18: 1.734,
+        19: 1.729,
+        20: 1.725,
+        21: 1.721,
+        22: 1.717,
+        23: 1.714,
+        24: 1.711,
+        25: 1.708,
+        26: 1.706,
+        27: 1.703,
+        28: 1.701,
+        29: 1.699,
+        30: 1.697,
+    }
 
     _T_95 = {
         1: 12.706,
@@ -436,71 +643,173 @@ class ReplicationStatistic:
         30: 2.042,
     }
 
+    _T_99 = {
+        1: 63.657,
+        2: 9.925,
+        3: 5.841,
+        4: 4.604,
+        5: 4.032,
+        6: 3.707,
+        7: 3.499,
+        8: 3.355,
+        9: 3.250,
+        10: 3.169,
+        11: 3.106,
+        12: 3.055,
+        13: 3.012,
+        14: 2.977,
+        15: 2.947,
+        16: 2.921,
+        17: 2.898,
+        18: 2.878,
+        19: 2.861,
+        20: 2.845,
+        21: 2.831,
+        22: 2.819,
+        23: 2.807,
+        24: 2.797,
+        25: 2.787,
+        26: 2.779,
+        27: 2.771,
+        28: 2.763,
+        29: 2.756,
+        30: 2.750,
+    }
+
     def __init__(self, values):
         self.values = list(values)
 
     @property
     def count(self):
+        """Return the number of replications."""
         return len(self.values)
 
     @property
     def mean(self):
+        """Return the mean across replications."""
         if not self.values:
             return 0.0
 
         return sum(self.values) / self.count
 
     @property
-    def standard_deviation(self):
+    def sample_variance(self):
+        """Return the sample variance across replications."""
         if self.count < 2:
             return 0.0
 
         mean = self.mean
 
-        variance = sum(
+        return sum(
             (value - mean) ** 2
             for value in self.values
         ) / (self.count - 1)
 
-        return sqrt(variance)
+    @property
+    def standard_deviation(self):
+        """Return the sample standard deviation."""
+        return sqrt(self.sample_variance)
 
     @property
     def standard_error(self):
+        """Return the standard error of the mean."""
         if self.count < 2:
             return 0.0
 
         return self.standard_deviation / sqrt(self.count)
 
-    @property
-    def t_critical_95(self):
+    def t_critical(self, confidence=0.95):
+        """
+        Return the Student-t critical value.
+
+        Parameters
+        ----------
+        confidence : float
+            Confidence level between 0 and 1.
+
+        Notes
+        -----
+        Exact tabulated Student-t values are used for 90%, 95%, and
+        99% confidence levels up to 30 degrees of freedom.
+
+        For other confidence levels, or more than 30 degrees of
+        freedom, a normal approximation is used.
+        """
+        if not 0 < confidence < 1:
+            raise ValueError(
+                "confidence must be between 0 and 1"
+            )
+
         if self.count < 2:
             return float("inf")
 
         degrees_of_freedom = self.count - 1
 
-        if degrees_of_freedom in self._T_95:
-            return self._T_95[degrees_of_freedom]
+        tables = {
+            0.90: self._T_90,
+            0.95: self._T_95,
+            0.99: self._T_99,
+        }
 
-        return 1.96
+        table = tables.get(confidence)
+
+        if table is not None and degrees_of_freedom in table:
+            return table[degrees_of_freedom]
+
+        # Normal approximation for larger samples or
+        # non-tabulated confidence levels.
+        probability = 0.5 + confidence / 2
+
+        return NormalDist().inv_cdf(probability)
 
     @property
-    def margin_of_error_95(self):
+    def t_critical_95(self):
+        """Return the 95% Student-t critical value."""
+        return self.t_critical(0.95)
+
+    def margin_of_error(self, confidence=0.95):
+        """Return the margin of error at the requested confidence level."""
         return (
-            self.t_critical_95
+            self.t_critical(confidence)
             * self.standard_error
         )
 
     @property
-    def confidence_interval_95(self):
-        margin = self.margin_of_error_95
+    def margin_of_error_95(self):
+        """Return the 95% margin of error."""
+        return self.margin_of_error(0.95)
+
+    def confidence_interval(self, confidence=0.95):
+        """
+        Return a confidence interval for the mean.
+
+        Parameters
+        ----------
+        confidence : float
+            Confidence level between 0 and 1.
+
+        Returns
+        -------
+        tuple
+            ``(lower, upper)`` confidence interval.
+        """
+        margin = self.margin_of_error(confidence)
 
         return (
             self.mean - margin,
             self.mean + margin,
         )
 
-    def summary(self):
-        lower, upper = self.confidence_interval_95
+    @property
+    def confidence_interval_95(self):
+        """Return the 95% confidence interval."""
+        return self.confidence_interval(0.95)
+
+    def summary(self, confidence=0.95):
+        """
+        Return a dictionary containing the main replication statistics.
+        """
+        lower, upper = self.confidence_interval(confidence)
 
         return {
             "count": self.count,
@@ -509,9 +818,9 @@ class ReplicationStatistic:
                 self.standard_deviation,
             "standard_error":
                 self.standard_error,
-            "confidence_level": 0.95,
+            "confidence_level": confidence,
             "margin_of_error":
-                self.margin_of_error_95,
+                self.margin_of_error(confidence),
             "confidence_interval":
                 [lower, upper],
         }
@@ -534,9 +843,7 @@ class ReplicationResults:
         self._metrics = {}
 
         for report in self.reports:
-            self._collect_metrics(
-                report
-            )
+            self._collect_metrics(report)
 
     def _collect_metrics(self, value, prefix=""):
         if isinstance(value, dict):
@@ -565,9 +872,11 @@ class ReplicationResults:
 
     @property
     def metrics(self):
+        """Return all available metric names."""
         return sorted(self._metrics)
 
     def values(self, metric):
+        """Return all replication values for a metric."""
         if metric not in self._metrics:
             raise KeyError(
                 f"Unknown replication metric: {metric!r}"
@@ -576,25 +885,47 @@ class ReplicationResults:
         return list(self._metrics[metric])
 
     def statistic(self, metric):
+        """Return a ReplicationStatistic for a metric."""
         return ReplicationStatistic(
             self.values(metric)
         )
 
     def mean(self, metric):
+        """Return the mean of a metric across replications."""
         return self.statistic(metric).mean
 
-    def confidence_interval(self, metric):
+    def confidence_interval(self, metric, confidence=0.95):
+        """
+        Return a confidence interval for a metric.
+
+        Parameters
+        ----------
+        metric : str
+            Metric name.
+        confidence : float
+            Confidence level between 0 and 1.
+        """
         return (
             self.statistic(metric)
-            .confidence_interval_95
+            .confidence_interval(confidence)
         )
 
-    def summary(self, metric=None):
+    def summary(self, metric=None, confidence=0.95):
+        """
+        Return summary statistics.
+
+        If ``metric`` is supplied, return its summary. Otherwise,
+        return summaries for all metrics.
+        """
         if metric is not None:
-            return self.statistic(metric).summary()
+            return self.statistic(metric).summary(
+                confidence=confidence
+            )
 
         return {
-            name: self.statistic(name).summary()
+            name: self.statistic(name).summary(
+                confidence=confidence
+            )
             for name in self.metrics
         }
 
