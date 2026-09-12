@@ -37,12 +37,9 @@ class Experiment:
         for replication in range(self.replications):
             model = self.model_factory(replication)
 
-            if self.warmup > 0:
-                model.run(self.warmup)
-                model.reset_statistics()
-
             model.run(
-                self.warmup + self.time
+                time=self.time,
+                warmup=self.warmup,
             )
 
             self.results.append(model)

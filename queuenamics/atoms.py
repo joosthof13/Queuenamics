@@ -646,12 +646,17 @@ class Server(Atom):
         self.busy_time = 0.0
         self.processed = 0
 
-        # If the server is currently busy at the warm-up boundary,
-        # start measuring its current service from this point onward.
         if self.busy:
             self.service_start_time = current_time
+            current_occupancy = 1.0
         else:
             self.service_start_time = None
+            current_occupancy = 0.0
+
+        self.stats.server_occupancy.reset(
+            time=current_time,
+            current=current_occupancy,
+        )
 
     def reset(self):
         self.current_entity = None
