@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "queuenamics"
-version = "0.8.4-dev1"
+version = "0.8.4-dev2"
 description = "A simple Python-native operations research and discrete-event simulation library"
 readme = "README.md"
 requires-python = ">=3.10"

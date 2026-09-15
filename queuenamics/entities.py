@@ -89,6 +89,14 @@ class Entity:
         else:
             self.resources[resource] = count - 1
 
+    def has_resource(self, resource):
+        """Return True if the entity holds at least one unit of the resource."""
+        return resource in self.resources
+
+    def resource_count(self, resource):
+        """Return the number of units of a resource held by the entity."""
+        return self.resources.get(resource, 0)
+
     def reset_timing(self):
         """Reset accumulated timing information."""
         self.queue_entry_time = None

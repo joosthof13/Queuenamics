@@ -861,9 +861,16 @@ class Resource(Atom):
         return True
 
     def release(self, entity=None):
+        """Release one unit of the resource.
+
+        If an entity is supplied, it must currently hold one unit of this
+        resource. Releasing a resource that the entity does not hold raises
+        RuntimeError.
         """
-        Release one unit of the resource.
-        """
+        if entity is not None and not entity.has_resource(self):
+            raise RuntimeError(
+                f"Entity {entity.id} does not hold resource {self.name!r}."
+            )
 
         if self.busy_count <= 0:
             raise RuntimeError(
@@ -873,17 +880,14 @@ class Resource(Atom):
         if entity is not None:
             entity.release_resource(self)
 
-        current_time = self._time()
-
         self.busy_count -= 1
+        current_time = self._time()
 
         self.stats.server_occupancy.update(
             self.busy_count,
             current_time,
         )
 
-        # A newly available unit may allow waiting Seize atoms
-        # to continue.
         self._notify_waiting()
 
     def available(self):
@@ -944,6 +948,18 @@ class Resource(Atom):
             0.0,
             self.model.simulation.time - self.busy_time,
         )
+
+    @property
+    def average_busy(self):
+        if self.model is None:
+            return float(self.busy_count)
+        return self.stats.server_occupancy.mean(
+            self.model.simulation.time
+        )
+
+    @property
+    def peak_busy(self):
+        return self.stats.server_occupancy.maximum
 
     def receive(self, entity):
         """
@@ -1012,6 +1028,8 @@ class Seize(Atom):
 
     If the resource is unavailable, entities wait inside
     the Seize atom until capacity becomes available.
+
+    Entities are allocated in FIFO order.
     """
 
     def __init__(self, name, resource):
@@ -1023,17 +1041,21 @@ class Seize(Atom):
             )
 
         self.resource = resource
-
         self.entities = []
 
         self.stats = Statistics()
-
         self.stats.queue_length.reset(
             time=0.0,
             current=0.0,
         )
 
     def receive(self, entity):
+        """
+        Add an entity to the Seize queue and attempt allocation.
+
+        Seize itself never blocks incoming entities. If the Resource
+        is unavailable, the entity remains in the Seize queue.
+        """
         current_time = self._time()
 
         # Record when the entity entered the resource wait.
@@ -1049,102 +1071,85 @@ class Seize(Atom):
         self._try_allocate()
 
     def _try_allocate(self):
-        if not self.entities:
-            self.resource._unregister_waiting(self)
-            return
+        """
+        Allocate available resource capacity to waiting entities.
 
-        if not self.resource.available():
-            self.resource._register_waiting(self)
-            return
+        Entities are served in FIFO order. Allocation continues while
+        both waiting entities and resource capacity are available.
+        """
 
-        entity = self.entities.pop(0)
+        while self.entities and self.resource.available():
 
-        current_time = self._time()
+            current_time = self._time()
 
-        self.stats.queue_length.update(
-            len(self.entities),
-            current_time,
-        )
+            # Check whether the immediate destination can accept
+            # the entity before acquiring the resource.
+            if self.outputs:
+                destination = self.outputs[0].destination
 
-        entry_time = getattr(
-            entity,
-            "seize_entry_time",
-            None,
-        )
+                if (
+                    hasattr(destination, "available")
+                    and not destination.available()
+                ):
+                    self.resource._register_waiting(self)
+                    return
 
-        if entry_time is not None:
-            waiting_time = (
-                current_time - entry_time
+            # FIFO: first entity in the queue gets the resource.
+            entity = self.entities.pop(0)
+
+            self.stats.queue_length.update(
+                len(self.entities),
+                current_time,
             )
 
-            self.stats.waiting_time.record(
-                waiting_time,
-                entity=entity,
+            # Calculate time spent waiting in Seize.
+            entry_time = getattr(
+                entity,
+                "seize_entry_time",
+                None,
             )
 
-            entity.add_waiting_time(
-                waiting_time
-            )
+            if entry_time is not None:
+                waiting_time = current_time - entry_time
 
-        entity.seize_entry_time = None
-
-        # Do not acquire a resource if the immediate destination
-        # is currently unavailable.
-        if self.outputs:
-
-            destination = (
-                self.outputs[0].destination
-            )
-
-            if (
-                hasattr(destination, "available")
-                and not destination.available()
-            ):
-                self.entities.insert(
-                    0,
-                    entity,
+                self.stats.waiting_time.record(
+                    waiting_time,
+                    entity=entity,
                 )
+
+                entity.add_waiting_time(
+                    waiting_time
+                )
+
+            entity.seize_entry_time = None
+
+            # Acquire one unit of the resource.
+            acquired = self.resource.acquire(entity)
+
+            if not acquired:
+                # Normally impossible because available() was true,
+                # but keep this safe if Resource behaviour changes.
+                self.entities.insert(0, entity)
 
                 self.stats.queue_length.update(
                     len(self.entities),
                     current_time,
                 )
 
-                self.resource._register_waiting(
-                    self
-                )
-
+                self.resource._register_waiting(self)
                 return
 
-        acquired = self.resource.acquire(
-            entity
-        )
+            # The entity now owns one resource unit.
+            self.resource._unregister_waiting(self)
 
-        if not acquired:
-            self.entities.insert(
-                0,
-                entity,
-            )
+            # Continue through the model.
+            self.send(entity)
 
-            self.resource._register_waiting(
-                self
-            )
-
-            return
-
-        self.resource._unregister_waiting(
-            self
-        )
-
-        self.send(entity)
-
-        # If multiple resource units are available,
-        # allocate them to waiting entities.
-        if (
-            self.entities
-            and self.resource.available()
-        ):
-            self._try_allocate()
+        # No more entities can currently be allocated.
+        if self.entities:
+            self.resource._register_waiting(self)
+        else:
+            self.resource._unregister_waiting(self)
 
     def available(self):
         """
