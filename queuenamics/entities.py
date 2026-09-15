@@ -19,6 +19,7 @@ class Entity:
         self.service_time = 0.0
 
         self.attributes = {}
+        self.resources = {}
 
     @property
     def total_processing_time(self):
@@ -74,6 +75,33 @@ class Entity:
             return 0.0
 
         return max(0.0, other)
+    
+def acquire_resource(self, resource):
+    """Record that the entity acquired one resource unit."""
+
+    self.resources[resource] = (
+        self.resources.get(resource, 0) + 1
+    )
+
+
+def release_resource(self, resource):
+    """Record that the entity released one resource unit."""
+
+    count = self.resources.get(
+        resource,
+        0,
+    )
+
+    if count <= 0:
+        raise RuntimeError(
+            f"Entity {self.id} does not hold "
+            f"resource {resource.name!r}."
+        )
+
+    if count == 1:
+        del self.resources[resource]
+    else:
+        self.resources[resource] = count - 1
 
     def reset_timing(self):
         """Reset accumulated timing information."""

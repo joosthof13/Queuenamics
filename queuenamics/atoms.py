@@ -25,23 +25,23 @@ class Atom:
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name!r})"
 
-
 class Source(Atom):
-    def __init__(self, name, arrival, entity_type=None, attributes=None):
+
+    def __init__(self, name, arrival, max_arrivals=None, entity_type=None, attributes=None):
         super().__init__(name)
 
         self.arrival = arrival
+        self.max_arrivals = max_arrivals
         self.entity_type = entity_type
-        self.attributes = (
-            dict(attributes)
-            if attributes is not None
-            else {}
-        )
+        self.attributes = dict(attributes) if attributes is not None else {}
 
         self.active = False
         self.entities_created = 0
 
     def start(self):
+        if self.max_arrivals is not None and self.entities_created >= self.max_arrivals:
+            return
+
         self.active = True
         self._schedule_next()
 
@@ -52,6 +52,14 @@ class Source(Atom):
         if not self.active:
             return
 
+        # Stop if the maximum has been reached
+        if (
+            self.max_arrivals is not None
+            and self.entities_created >= self.max_arrivals
+        ):
+            self.active = False
+            return
+
         entity = Entity(
             entity_type=self.entity_type,
             creation_time=self.model.simulation.time,
@@ -60,12 +68,26 @@ class Source(Atom):
         entity.attributes = dict(self.attributes)
 
         self.entities_created += 1
-
         self.send(entity)
-        self._schedule_next()
+
+        # Only schedule another arrival if we haven't reached the limit
+        if (
+            self.max_arrivals is None
+            or self.entities_created < self.max_arrivals
+        ):
+            self._schedule_next()
+        else:
+            self.active = False
 
     def _schedule_next(self):
         if not self.active:
+            return
+
+        if (
+            self.max_arrivals is not None
+            and self.entities_created >= self.max_arrivals
+        ):
+            self.active = False
             return
 
         delay = self.arrival.sample()
@@ -434,7 +456,7 @@ class Server(Atom):
             return False
 
         if self.resource is not None:
-            if not self.resource.acquire():
+            if not self.resource.acquire(entity):
                 return False
 
         current_time = self.model.simulation.time
@@ -498,7 +520,7 @@ class Server(Atom):
         self.busy_time += service_time
 
         if self.resource is not None:
-            self.resource.release()
+            self.resource.release(entity)
 
         self.current_entity = None
         self.busy = False
@@ -670,8 +692,23 @@ class Server(Atom):
 
 
 class Resource(Atom):
+    """
+    A finite-capacity shared resource.
+
+    Examples include machines, employees, rooms, vehicles,
+    tools, or other capacity-constrained assets.
+    """
+
     def __init__(self, name, capacity=1):
         super().__init__(name)
+
+        if (
+            isinstance(capacity, bool)
+            or not isinstance(capacity, int)
+        ):
+            raise TypeError(
+                "Resource capacity must be an integer."
+            )
 
         if capacity <= 0:
             raise ValueError(
@@ -681,51 +718,407 @@ class Resource(Atom):
         self.capacity = capacity
         self.busy_count = 0
 
-    def acquire(self):
+        self.stats = Statistics()
+
+        # Number of occupied resource units over time.
+        self.stats.server_occupancy.reset(
+            time=0.0,
+            current=0.0,
+        )
+
+        # Seize atoms waiting for this resource.
+        self.waiting_seizes = []
+
+    def acquire(self, entity=None):
+        """
+        Acquire one unit of the resource.
+
+        Returns True when successful and False when the
+        resource is currently full.
+        """
+
         if not self.available():
             return False
 
+        current_time = self._time()
+
         self.busy_count += 1
+
+        self.stats.server_occupancy.update(
+            self.busy_count,
+            current_time,
+        )
+
+        if entity is not None:
+            entity.acquire_resource(self)
+
         return True
 
-    def release(self):
+    def release(self, entity=None):
+        """
+        Release one unit of the resource.
+        """
+
         if self.busy_count <= 0:
             raise RuntimeError(
                 f"Resource {self.name!r} has no busy units."
             )
 
+        if entity is not None:
+            entity.release_resource(self)
+
+        current_time = self._time()
+
         self.busy_count -= 1
 
-    def available(self):
-        return (
-            self.busy_count
-            < self.capacity
+        self.stats.server_occupancy.update(
+            self.busy_count,
+            current_time,
         )
+
+        # A newly available unit may allow waiting Seize atoms
+        # to continue.
+        self._notify_waiting()
+
+    def available(self):
+        """Return True when at least one unit is available."""
+        return self.busy_count < self.capacity
 
     @property
     def available_capacity(self):
-        return (
-            self.capacity
-            - self.busy_count
-        )
+        """Number of currently available resource units."""
+        return self.capacity - self.busy_count
 
     @property
     def utilization(self):
-        if self.capacity <= 0:
+        """
+        Fraction of total resource capacity utilized.
+
+        For capacity=3, two occupied units correspond to
+        a utilization of 2/3.
+        """
+
+        if self.model is None:
+            return self.busy_count / self.capacity
+
+        simulation_time = self.model.simulation.time
+
+        if simulation_time <= 0:
             return 0.0
 
         return (
-            self.busy_count
+            self.stats.server_occupancy.mean(
+                simulation_time
+            )
             / self.capacity
         )
 
+    @property
+    def busy_time(self):
+        """
+        Total time during which at least one resource unit
+        was occupied.
+        """
+
+        if self.model is None:
+            return 0.0
+
+        return self.stats.server_occupancy.time_nonzero(
+            self.model.simulation.time
+        )
+
+    @property
+    def idle_time(self):
+        """Total time during which all resource units were idle."""
+
+        if self.model is None:
+            return 0.0
+
+        return max(
+            0.0,
+            self.model.simulation.time - self.busy_time,
+        )
+
     def receive(self, entity):
-        if not self.acquire():
+        """
+        Allow Resource to be used directly as an atom.
+
+        Normally Seize/Release should be preferred when modelling
+        explicit resource acquisition and release.
+        """
+
+        if not self.acquire(entity):
             raise RuntimeError(
                 f"Resource {self.name!r} is full."
             )
 
         self.send(entity)
 
+    def _time(self):
+        if self.model is None:
+            return 0.0
+
+        return self.model.simulation.time
+
+    def _register_waiting(self, seize):
+        if seize not in self.waiting_seizes:
+            self.waiting_seizes.append(seize)
+
+    def _unregister_waiting(self, seize):
+        if seize in self.waiting_seizes:
+            self.waiting_seizes.remove(seize)
+
+    def _notify_waiting(self):
+        """
+        Notify waiting Seize atoms that capacity is available.
+        """
+
+        for seize in list(self.waiting_seizes):
+
+            if not self.available():
+                break
+
+            seize._try_allocate()
+
+    def reset_statistics(self):
+        """
+        Reset measurements while preserving current resource state.
+
+        This is important for warm-up periods.
+        """
+
+        current_time = self._time()
+
+        self.stats.server_occupancy.reset(
+            time=current_time,
+            current=self.busy_count,
+        )
+
     def reset(self):
         self.busy_count = 0
+        self.waiting_seizes.clear()
+
+        self.stats.reset()
+
+class Seize(Atom):
+    """
+    Acquire a Resource before continuing.
+
+    If the resource is unavailable, entities wait inside
+    the Seize atom until capacity becomes available.
+    """
+
+    def __init__(self, name, resource):
+        super().__init__(name)
+
+        if not isinstance(resource, Resource):
+            raise TypeError(
+                "resource must be a Resource instance."
+            )
+
+        self.resource = resource
+
+        self.entities = []
+
+        self.stats = Statistics()
+
+        self.stats.queue_length.reset(
+            time=0.0,
+            current=0.0,
+        )
+
+    def receive(self, entity):
+        current_time = self._time()
+
+        # Record when the entity entered the resource wait.
+        entity.seize_entry_time = current_time
+
+        self.entities.append(entity)
+
+        self.stats.queue_length.update(
+            len(self.entities),
+            current_time,
+        )
+
+        self._try_allocate()
+
+    def _try_allocate(self):
+        if not self.entities:
+            self.resource._unregister_waiting(self)
+            return
+
+        if not self.resource.available():
+            self.resource._register_waiting(self)
+            return
+
+        entity = self.entities.pop(0)
+
+        current_time = self._time()
+
+        self.stats.queue_length.update(
+            len(self.entities),
+            current_time,
+        )
+
+        entry_time = getattr(
+            entity,
+            "seize_entry_time",
+            None,
+        )
+
+        if entry_time is not None:
+            waiting_time = (
+                current_time - entry_time
+            )
+
+            self.stats.waiting_time.record(
+                waiting_time,
+                entity=entity,
+            )
+
+            entity.add_waiting_time(
+                waiting_time
+            )
+
+        entity.seize_entry_time = None
+
+        # Do not acquire a resource if the immediate destination
+        # is currently unavailable.
+        if self.outputs:
+
+            destination = (
+                self.outputs[0].destination
+            )
+
+            if (
+                hasattr(destination, "available")
+                and not destination.available()
+            ):
+                self.entities.insert(
+                    0,
+                    entity,
+                )
+
+                self.stats.queue_length.update(
+                    len(self.entities),
+                    current_time,
+                )
+
+                self.resource._register_waiting(
+                    self
+                )
+
+                return
+
+        acquired = self.resource.acquire(
+            entity
+        )
+
+        if not acquired:
+            self.entities.insert(
+                0,
+                entity,
+            )
+
+            self.resource._register_waiting(
+                self
+            )
+
+            return
+
+        self.resource._unregister_waiting(
+            self
+        )
+
+        self.send(entity)
+
+        # If multiple resource units are available,
+        # allocate them to waiting entities.
+        if (
+            self.entities
+            and self.resource.available()
+        ):
+            self._try_allocate()
+
+    def available(self):
+        """
+        Seize itself can always accept an entity.
+
+        If the resource is unavailable, the entity waits here.
+        """
+        return True
+
+    def _time(self):
+        if self.model is None:
+            return 0.0
+
+        return self.model.simulation.time
+
+    @property
+    def queue_length(self):
+        return len(self.entities)
+
+    @property
+    def average_waiting_time(self):
+        return self.stats.waiting_time.mean
+
+    @property
+    def average_length(self):
+        if self.model is None:
+            return 0.0
+
+        return self.stats.queue_length.mean(
+            self.model.simulation.time
+        )
+
+    @property
+    def maximum_length(self):
+        return self.stats.queue_length.maximum
+
+    def reset_statistics(self):
+        current_time = self._time()
+
+        self.stats.waiting_time.reset()
+
+        self.stats.queue_length.reset(
+            time=current_time,
+            current=len(self.entities),
+        )
+
+    def reset(self):
+        self.entities.clear()
+
+        self.resource._unregister_waiting(
+            self
+        )
+
+        self.stats.reset()
+
+class Release(Atom):
+    """
+    Release one unit of a Resource and continue the entity flow.
+    """
+
+    def __init__(self, name, resource):
+        super().__init__(name)
+
+        if not isinstance(resource, Resource):
+            raise TypeError(
+                "resource must be a Resource instance."
+            )
+
+        self.resource = resource
+        self.released = 0
+
+    def receive(self, entity):
+        self.resource.release(entity)
+
+        self.released += 1
+
+        self.send(entity)
+
+    def reset_statistics(self):
+        self.released = 0
+
+    def reset(self):
+        self.released = 0

@@ -8,6 +8,8 @@ from queuenamics.atoms import (
     Queue,
     Server,
     Resource,
+    Seize,
+    Release,
 )
 
 from queuenamics.distributions import (
@@ -15,7 +17,23 @@ from queuenamics.distributions import (
     Constant,
     Exponential,
     Uniform,
+    Normal,
+    LogNormal,
+    Triangular,
+    Gamma,
+    Weibull,
+    Erlang,
+    Beta,
+    DiscreteUniform,
+    Bernoulli,
+    Binomial,
+    Geometric,
+    NegativeBinomial,
     Poisson,
+    Hypergeometric,
+    Empirical,
+    Choice,
+    WeightedChoice,
 )
 
 from queuenamics.disciplines import (
@@ -61,39 +79,74 @@ __version__ = "0.8.3"
 
 
 __all__ = [
+    # Model
     "Model",
     "Connection",
+
+    # Entities
     "Entity",
+
+    # Atoms
     "Atom",
     "Source",
     "Sink",
     "Queue",
     "Server",
     "Resource",
+    "Seize",
+    "Release",
+
+    # Distributions
     "Distribution",
     "Constant",
     "Exponential",
     "Uniform",
+    "Normal",
+    "LogNormal",
+    "Triangular",
+    "Gamma",
+    "Weibull",
+    "Erlang",
+    "Beta",
+    "DiscreteUniform",
+    "Bernoulli",
+    "Binomial",
+    "Geometric",
+    "NegativeBinomial",
     "Poisson",
+    "Hypergeometric",
+    "Empirical",
+    "Choice",
+    "WeightedChoice",
+
+    # Queue disciplines
     "Discipline",
     "FIFO",
     "LIFO",
     "Random",
     "Priority",
     "ShortestProcessingTime",
+
+    # Routing
     "Router",
     "FirstAvailable",
     "RandomAvailable",
     "EntityTypeRouter",
     "AttributeRouter",
     "ConditionalRouter",
+
+    # Experiments
     "Experiment",
     "ParameterSweep",
+
+    # Statistics
     "Statistic",
     "Statistics",
     "TimeWeightedStatistic",
     "ReplicationStatistic",
     "ReplicationResults",
+
+    # Visualization
     "plot_model",
     "plot_queue_length",
     "plot_server_utilization",
