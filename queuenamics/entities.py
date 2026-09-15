@@ -1,4 +1,5 @@
 class Entity:
+
     _next_id = 0
 
     def __init__(self, entity_type=None, creation_time=0.0):
@@ -12,9 +13,6 @@ class Entity:
         self.queue_entry_time = None
 
         # Accumulated over the entity's entire journey.
-        #
-        # An entity may visit multiple queues and servers, so these
-        # represent totals rather than the time spent at one location.
         self.waiting_time = 0.0
         self.service_time = 0.0
 
@@ -33,18 +31,12 @@ class Entity:
 
     def add_waiting_time(self, duration):
         if duration < 0:
-            raise ValueError(
-                "Waiting time cannot be negative."
-            )
-
+            raise ValueError("Waiting time cannot be negative.")
         self.waiting_time += duration
 
     def add_service_time(self, duration):
         if duration < 0:
-            raise ValueError(
-                "Service time cannot be negative."
-            )
-
+            raise ValueError("Service time cannot be negative.")
         self.service_time += duration
 
     def flow_time(self, current_time):
@@ -75,33 +67,27 @@ class Entity:
             return 0.0
 
         return max(0.0, other)
-    
-def acquire_resource(self, resource):
-    """Record that the entity acquired one resource unit."""
 
-    self.resources[resource] = (
-        self.resources.get(resource, 0) + 1
-    )
-
-
-def release_resource(self, resource):
-    """Record that the entity released one resource unit."""
-
-    count = self.resources.get(
-        resource,
-        0,
-    )
-
-    if count <= 0:
-        raise RuntimeError(
-            f"Entity {self.id} does not hold "
-            f"resource {resource.name!r}."
+    def acquire_resource(self, resource):
+        """Record that the entity acquired one resource unit."""
+        self.resources[resource] = (
+            self.resources.get(resource, 0) + 1
         )
 
-    if count == 1:
-        del self.resources[resource]
-    else:
-        self.resources[resource] = count - 1
+    def release_resource(self, resource):
+        """Record that the entity released one resource unit."""
+        count = self.resources.get(resource, 0)
+
+        if count <= 0:
+            raise RuntimeError(
+                f"Entity {self.id} does not hold "
+                f"resource {resource.name!r}."
+            )
+
+        if count == 1:
+            del self.resources[resource]
+        else:
+            self.resources[resource] = count - 1
 
     def reset_timing(self):
         """Reset accumulated timing information."""
