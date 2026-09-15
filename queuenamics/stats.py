@@ -550,6 +550,7 @@ class Statistics:
     def __init__(self):
         self.waiting_time = Statistic()
         self.service_time = Statistic()
+        self.setup_time = Statistic()
         self.other_time = Statistic()
         self.flow_time = Statistic()
 
@@ -560,6 +561,7 @@ class Statistics:
         """Reset all contained statistics."""
         self.waiting_time.reset()
         self.service_time.reset()
+        self.setup_time.reset()
         self.other_time.reset()
         self.flow_time.reset()
 

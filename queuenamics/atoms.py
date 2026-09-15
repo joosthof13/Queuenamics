@@ -420,50 +420,57 @@ class Queue(Atom):
 
 
 class Server(Atom):
+
     def __init__(
         self,
         name,
         service,
         resource=None,
+        setup=None,
     ):
         super().__init__(name)
 
         self.service = service
         self.resource = resource
+        self.setup = setup
 
         self.current_entity = None
         self.busy = False
-
         self.processed = 0
+
         self.busy_time = 0.0
+        self.setup_time = 0.0
+
         self.service_start_time = None
+        self.setup_start_time = None
+        self.busy_start_time = None
 
         self.stats = Statistics()
 
-        # Server occupancy is represented as:
-        #
-        #     0 = idle
-        #     1 = busy
-        #
-        # This gives exact busy/idle durations.
+        # Server occupancy:
+        # 0 = idle
+        # 1 = busy
         self.stats.server_occupancy.reset(
             time=0.0,
             current=0.0,
         )
 
     def receive(self, entity):
+
         if self.busy:
             return False
 
+        # Acquire resource before starting setup.
         if self.resource is not None:
             if not self.resource.acquire(entity):
                 return False
 
         current_time = self.model.simulation.time
+        self.busy_start_time = current_time
 
-        # The queue already accumulated this waiting period on the
-        # entity. The server only records its own statistic here.
+        # Record queue waiting time.
         if entity.queue_entry_time is not None:
+
             waiting_time = (
                 current_time
                 - entity.queue_entry_time
@@ -478,12 +485,60 @@ class Server(Atom):
 
         self.current_entity = entity
         self.busy = True
-        self.service_start_time = current_time
 
         self.stats.server_occupancy.update(
             1.0,
             current_time,
         )
+
+        # Setup phase
+        if self.setup is not None:
+
+            self.setup_start_time = current_time
+
+            setup_duration = self.setup.sample()
+
+            self.model.simulation.schedule(
+                time=current_time + setup_duration,
+                action=self._complete_setup,
+            )
+
+        else:
+
+            # No setup: start service immediately.
+            self._start_service(current_time)
+
+        return True
+
+    def _complete_setup(self):
+
+        if self.current_entity is None:
+            return
+
+        current_time = self.model.simulation.time
+
+        setup_duration = (
+            current_time
+            - self.setup_start_time
+        )
+
+        if self.setup_start_time is None:
+            raise RuntimeError("Server busy start time is missing.")
+
+        self.stats.setup_time.record(
+            setup_duration,
+            entity=self.current_entity,
+        )
+
+        self.setup_time += setup_duration
+
+        self.setup_start_time = None
+
+        self._start_service(current_time)
+
+    def _start_service(self, current_time):
+
+        self.service_start_time = current_time
 
         delay = self.service.sample()
 
@@ -492,14 +547,12 @@ class Server(Atom):
             action=self.complete,
         )
 
-        return True
-
     def complete(self):
+
         if self.current_entity is None:
             return
 
         entity = self.current_entity
-
         current_time = self.model.simulation.time
 
         service_time = (
@@ -512,12 +565,23 @@ class Server(Atom):
             entity=entity,
         )
 
-        # Add this service period exactly once to the entity.
+        # Setup time is deliberately NOT included
+        # in the entity's service_time.
         entity.add_service_time(
             service_time
         )
 
-        self.busy_time += service_time
+        # Total time the server was occupied,
+        # including setup + service.
+        busy_duration = (
+            current_time
+            - self.busy_start_time
+        )
+
+        self.busy_time += busy_duration
+
+        if self.busy_start_time is None:
+            raise RuntimeError("Server busy start time is missing.")
 
         if self.resource is not None:
             self.resource.release(entity)
@@ -525,6 +589,10 @@ class Server(Atom):
         self.current_entity = None
         self.busy = False
         self.processed += 1
+
+        self.busy_start_time = None
+        self.service_start_time = None
+        self.setup_start_time = None
 
         self.stats.server_occupancy.update(
             0.0,
@@ -536,16 +604,20 @@ class Server(Atom):
         self._pull_from_queue()
 
     def _pull_from_queue(self):
+
         for connection in self.inputs:
+
             queue = connection.source
 
             if hasattr(queue, "_try_send"):
+
                 queue._try_send()
 
                 if self.busy:
                     return
 
     def available(self):
+
         if self.busy:
             return False
 
@@ -556,6 +628,7 @@ class Server(Atom):
 
     @property
     def utilization(self):
+
         if self.model is None:
             return 0.0
 
@@ -568,6 +641,7 @@ class Server(Atom):
 
     @property
     def busy_time_exact(self):
+
         if self.model is None:
             return 0.0
 
@@ -577,6 +651,7 @@ class Server(Atom):
 
     @property
     def idle_time(self):
+
         if self.model is None:
             return 0.0
 
@@ -589,6 +664,7 @@ class Server(Atom):
 
     @property
     def busy_periods(self):
+
         if self.model is None:
             return []
 
@@ -598,6 +674,7 @@ class Server(Atom):
 
     @property
     def idle_periods(self):
+
         if self.model is None:
             return []
 
@@ -612,6 +689,7 @@ class Server(Atom):
 
     @property
     def average_busy_period(self):
+
         periods = self.busy_periods
 
         if not periods:
@@ -621,6 +699,7 @@ class Server(Atom):
 
     @property
     def maximum_busy_period(self):
+
         periods = self.busy_periods
 
         if not periods:
@@ -634,6 +713,7 @@ class Server(Atom):
 
     @property
     def average_idle_period(self):
+
         periods = self.idle_periods
 
         if not periods:
@@ -643,6 +723,7 @@ class Server(Atom):
 
     @property
     def maximum_idle_period(self):
+
         periods = self.idle_periods
 
         if not periods:
@@ -654,7 +735,12 @@ class Server(Atom):
     def average_service_time(self):
         return self.stats.service_time.mean
 
+    @property
+    def average_setup_time(self):
+        return self.stats.setup_time.mean
+
     def reset_statistics(self):
+
         current_time = (
             self.model.simulation.time
             if self.model is not None
@@ -663,16 +749,31 @@ class Server(Atom):
 
         self.stats.waiting_time.reset()
         self.stats.service_time.reset()
+        self.stats.setup_time.reset()
         self.stats.flow_time.reset()
 
         self.busy_time = 0.0
+        self.setup_time = 0.0
         self.processed = 0
 
         if self.busy:
-            self.service_start_time = current_time
+
+            self.busy_start_time = current_time
+
+            if self.setup_start_time is not None:
+                self.setup_start_time = current_time
+
+            if self.service_start_time is not None:
+                self.service_start_time = current_time
+
             current_occupancy = 1.0
+
         else:
+
+            self.busy_start_time = None
             self.service_start_time = None
+            self.setup_start_time = None
+
             current_occupancy = 0.0
 
         self.stats.server_occupancy.reset(
@@ -681,12 +782,17 @@ class Server(Atom):
         )
 
     def reset(self):
+
         self.current_entity = None
         self.busy = False
-
         self.processed = 0
+
         self.service_start_time = None
+        self.setup_start_time = None
+        self.busy_start_time = None
+
         self.busy_time = 0.0
+        self.setup_time = 0.0
 
         self.stats.reset()
 
