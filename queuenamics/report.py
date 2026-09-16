@@ -82,6 +82,7 @@ class StatisticsReport:
                 "sources": {},
                 "queues": {},
                 "servers": {},
+                "resources": {},
                 "sinks": {},
             }
 
@@ -371,6 +372,21 @@ class StatisticsReport:
                         )
 
                     result["sinks"][atom.name] = data
+
+            # --------------------------------------------------
+            # RESOURCES
+            # --------------------------------------------------
+            for resource in self.model.resources:
+                result["resources"][resource.name] = {
+                    "capacity": resource.capacity,
+                    "busy_count": resource.busy_count,
+                    "available_capacity": resource.available_capacity,
+                    "average_busy": resource.average_busy,
+                    "peak_busy": resource.peak_busy,
+                    "utilization": resource.utilization,
+                    "busy_time": resource.busy_time,
+                    "idle_time": resource.idle_time,
+                }
 
             return result
 
@@ -842,6 +858,31 @@ class StatisticsReport:
     # --------------------------------------------------
     # Atom panels
     # --------------------------------------------------
+
+    def _resource_panel(self, name, data):
+        table = Table(
+            box=box.SIMPLE,
+            show_header=False,
+            expand=True,
+        )
+
+        table.add_column("Metric", style="bold")
+        table.add_column("Value", justify="right")
+
+        table.add_row("Capacity", f"{data['capacity']:,}")
+        table.add_row("Busy units", f"{data['busy_count']:,}")
+        table.add_row("Available units", f"{data['available_capacity']:,}")
+        table.add_row("Average busy", f"{data['average_busy']:,.3f}")
+        table.add_row("Peak busy", f"{data['peak_busy']:,}")
+        table.add_row("Utilization", f"{data['utilization'] * 100:.2f}%")
+        table.add_row("Busy time", f"{data['busy_time']:,.3f}")
+        table.add_row("Idle time", f"{data['idle_time']:,.3f}")
+
+        return Panel(
+            table,
+            title=f"[bold]RESOURCE: {name}[/bold]",
+            border_style="magenta",
+        )
 
     def _source_panel(self, name, data):
         table = Table(
@@ -1690,6 +1731,25 @@ class StatisticsReport:
                     Group(*sink_panels),
                     title="[bold]SINKS[/bold]",
                     border_style="yellow",
+                )
+            )
+
+        # --------------------------------------------------
+        # RESOURCES
+        # --------------------------------------------------
+        if report["resources"]:
+            resource_panels = []
+
+            for name, data in report["resources"].items():
+                resource_panels.append(
+                    self._resource_panel(name, data)
+                )
+
+            console.print(
+                Panel(
+                    Group(*resource_panels),
+                    title="[bold]RESOURCES[/bold]",
+                    border_style="magenta",
                 )
             )
 

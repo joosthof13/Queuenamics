@@ -1185,6 +1185,14 @@ class Seize(Atom):
     @property
     def maximum_length(self):
         return self.stats.queue_length.maximum
+    
+    @property
+    def p95_waiting_time(self):
+        return self.stats.waiting_time.percentile(95)
+    
+    @property
+    def maximum_waiting_time(self):
+        return self.stats.waiting_time.maximum
 
     def reset_statistics(self):
         current_time = self._time()

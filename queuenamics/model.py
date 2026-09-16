@@ -31,6 +31,7 @@ class Model:
     def __init__(self, seed=None):
         self.atoms = []
         self.connections = []
+        self.resources = []
 
         self.simulation = Simulation()
 
@@ -126,6 +127,11 @@ class Model:
         for atom in self.atoms:
             if isinstance(atom, Source) and not atom.active:
                 atom.start()
+
+    def add_resource(self, resource):
+        if resource not in self.resources:
+            self.resources.append(resource)
+            resource.model = self
 
     def _run_single(
         self,
