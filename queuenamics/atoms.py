@@ -1,5 +1,5 @@
 from queuenamics.entities import Entity
-from queuenamics.disciplines import FIFO
+from queuenamics.disciplines import FIFO, Discipline
 from queuenamics.stats import Statistics
 from queuenamics.routing import FirstAvailable
 
@@ -1032,7 +1032,7 @@ class Seize(Atom):
     Entities are allocated in FIFO order.
     """
 
-    def __init__(self, name, resource):
+    def __init__(self, name, resource, discipline=None):
         super().__init__(name)
 
         if not isinstance(resource, Resource):
@@ -1040,7 +1040,16 @@ class Seize(Atom):
                 "resource must be a Resource instance."
             )
 
+        if discipline is None:
+            discipline = FIFO()
+
+        if not isinstance(discipline, Discipline):
+            raise TypeError(
+                "discipline must be a Discipline instance."
+            )
+
         self.resource = resource
+        self.discipline = discipline
         self.entities = []
 
         self.stats = Statistics()
@@ -1094,8 +1103,8 @@ class Seize(Atom):
                     self.resource._register_waiting(self)
                     return
 
-            # FIFO: first entity in the queue gets the resource.
-            entity = self.entities.pop(0)
+            entity = self.discipline.select(self.entities)
+            self.entities.remove(entity)
 
             self.stats.queue_length.update(
                 len(self.entities),

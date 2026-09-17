@@ -5,6 +5,8 @@ from rich.table import Table
 from rich.panel import Panel
 from rich import box
 
+from queuenamics.atoms import Resource
+
 class StatisticsReport:
     def __init__(self, model):
         self.model = model
@@ -376,17 +378,19 @@ class StatisticsReport:
             # --------------------------------------------------
             # RESOURCES
             # --------------------------------------------------
-            for resource in self.model.resources:
-                result["resources"][resource.name] = {
-                    "capacity": resource.capacity,
-                    "busy_count": resource.busy_count,
-                    "available_capacity": resource.available_capacity,
-                    "average_busy": resource.average_busy,
-                    "peak_busy": resource.peak_busy,
-                    "utilization": resource.utilization,
-                    "busy_time": resource.busy_time,
-                    "idle_time": resource.idle_time,
-                }
+            for atom in self.model.atoms:
+
+                if isinstance(atom, Resource):
+                    result["resources"][atom.name] = {
+                        "capacity": atom.capacity,
+                        "busy_count": atom.busy_count,
+                        "available_capacity": atom.available_capacity,
+                        "average_busy": atom.average_busy,
+                        "peak_busy": atom.peak_busy,
+                        "utilization": atom.utilization,
+                        "busy_time": atom.busy_time,
+                        "idle_time": atom.idle_time,
+                    }
 
             return result
 
