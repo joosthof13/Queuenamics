@@ -2,8 +2,7 @@
 
 **Python-native discrete-event simulation and queueing.**
 
-[![PyPI](https://img.shields.io/pypi/v/queuenamics.svg)](https://pypi.org/project/queuenamics/)
-[![Python](https://img.shields.io/pypi/pyversions/queuenamics.svg)](https://pypi.org/project/queuenamics/)
+[![TestPyPI](https://img.shields.io/pypi/v/queuenamics.svg)](https://test.pypi.org/project/queuenamics/)
 [![License](https://img.shields.io/github/license/joosthof13/Queuenamics.svg)](https://github.com/joosthof13/Queuenamics)
 
 Queuenamics is a Python library for building, simulating, and analyzing **queueing systems, service processes, and operational models**.
