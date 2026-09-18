@@ -27,23 +27,40 @@ class Atom:
 
 class Source(Atom):
 
-    def __init__(self, name, arrival, max_arrivals=None, entity_type=None, attributes=None):
+    def __init__(
+        self,
+        name,
+        arrival,
+        max_arrivals=None,
+        entity_type=None,
+        attributes=None,
+        time_till_first_product=0.0,
+    ):
         super().__init__(name)
 
         self.arrival = arrival
         self.max_arrivals = max_arrivals
         self.entity_type = entity_type
         self.attributes = dict(attributes) if attributes is not None else {}
+        self.time_till_first_product = time_till_first_product
 
         self.active = False
         self.entities_created = 0
 
     def start(self):
-        if self.max_arrivals is not None and self.entities_created >= self.max_arrivals:
+        if (
+            self.max_arrivals is not None
+            and self.entities_created >= self.max_arrivals
+        ):
             return
 
         self.active = True
-        self._schedule_next()
+
+        # Schedule the first product at the specified time
+        self.model.simulation.schedule(
+            time=self.model.simulation.time + self.time_till_first_product,
+            action=self.generate,
+        )
 
     def stop(self):
         self.active = False
@@ -70,7 +87,7 @@ class Source(Atom):
         self.entities_created += 1
         self.send(entity)
 
-        # Only schedule another arrival if we haven't reached the limit
+        # Schedule subsequent arrivals using the arrival distribution
         if (
             self.max_arrivals is None
             or self.entities_created < self.max_arrivals
@@ -103,7 +120,6 @@ class Source(Atom):
 
     def reset_statistics(self):
         self.entities_created = 0
-
 
 class Sink(Atom):
     def __init__(self, name):
