@@ -224,6 +224,16 @@ class StatisticsReport:
             and "standard_error" in value
             and "confidence_interval_95" in value
         )
+    
+    def _replicated_value(self, value, statistic="mean"):
+        """Return a value from a replication summary.
+
+        For replicated metrics, returns the requested statistic.
+        For ordinary numeric values, returns the value unchanged.
+        """
+        if self._is_replication_summary(value):
+            return value[statistic]
+        return value
 
     def _format_value(self, value):
 
@@ -491,18 +501,20 @@ class StatisticsReport:
 
         for entity_type, stats in breakdown.items():
 
-            row = [
-                str(entity_type),
-                self._format_value(
-                    stats["count"]
-                ),
-                self._format_value(
-                    stats["total"]
-                ),
-                self._format_value(
-                    stats["mean"]
-                ),
-            ]
+            if isinstance(stats, (int, float)):
+                row = [
+                    str(entity_type),
+                    self._format_value(stats),
+                    self._format_value(stats),
+                    self._format_value(stats),
+                ]
+            else:
+                row = [
+                    str(entity_type),
+                    self._format_value(stats["count"]),
+                    self._format_value(stats["total"]),
+                    self._format_value(stats["mean"]),
+                ]
 
             if extended:
 
@@ -848,64 +860,42 @@ class StatisticsReport:
             "State",
             style="bold",
         )
-
-        if self._has_replications():
-
-            period_table.add_column(
-                "Periods",
-                justify="right",
-            )
-
-            period_table.add_column(
-                "Average",
-                justify="right",
-            )
-
-            period_table.add_column(
-                "Maximum",
-                justify="right",
-            )
-
-        else:
-
-            period_table.add_column(
-                "Periods",
-                justify="right",
-            )
-
-            period_table.add_column(
-                "Average",
-                justify="right",
-            )
-
-            period_table.add_column(
-                "Maximum",
-                justify="right",
-            )
+        period_table.add_column(
+            "Periods",
+            justify="right",
+        )
+        period_table.add_column(
+            "Average",
+            justify="right",
+        )
+        period_table.add_column(
+            "Maximum",
+            justify="right",
+        )
 
         period_table.add_row(
             "Busy",
             self._format_value(
-                busy["count"]
+                self._replicated_value(busy["count"])
             ),
             self._format_value(
-                busy["average"]
+                self._replicated_value(busy["average"])
             ),
             self._format_value(
-                busy["maximum"]
+                self._replicated_value(busy["maximum"])
             ),
         )
 
         period_table.add_row(
             "Idle",
             self._format_value(
-                idle["count"]
+                self._replicated_value(idle["count"])
             ),
             self._format_value(
-                idle["average"]
+                self._replicated_value(idle["average"])
             ),
             self._format_value(
-                idle["maximum"]
+                self._replicated_value(idle["maximum"])
             ),
         )
 
