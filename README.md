@@ -268,7 +268,7 @@ python -m pytest -q
 
 ## Project status
 
-**Current version: 0.8.3**
+**Current version: 0.8.4**
 
 Queuenamics is currently suitable for:
 
