@@ -34,7 +34,7 @@ class Source(Atom):
         max_arrivals=None,
         entity_type=None,
         attributes=None,
-        time_till_first_product=0.0,
+        time_till_first_product=None,
     ):
         super().__init__(name)
 
@@ -56,11 +56,18 @@ class Source(Atom):
 
         self.active = True
 
-        # Schedule the first product at the specified time
-        self.model.simulation.schedule(
-            time=self.model.simulation.time + self.time_till_first_product,
-            action=self.generate,
-        )
+        if self.time_till_first_product is None:
+            # Use the arrival distribution for the first product
+            self._schedule_next()
+        else:
+            # Schedule the first product at the explicitly specified time
+            self.model.simulation.schedule(
+                time=(
+                    self.model.simulation.time
+                    + self.time_till_first_product
+                ),
+                action=self.generate,
+            )
 
     def stop(self):
         self.active = False

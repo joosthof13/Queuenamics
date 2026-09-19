@@ -1884,10 +1884,9 @@ class StatisticsReport:
         else:
 
             raise ValueError(
-                f"Unsupported format: {format!r}. "
+                f"Unsupported export format: {format!r}. "
                 "Use 'json' or 'csv'."
             )
-
         return filename
 
     # --------------------------------------------------
