@@ -228,6 +228,7 @@ class Queue(Atom):
         capacity=None,
         discipline=None,
         router=None,
+        overflow="error"
     ):
         super().__init__(name)
 
@@ -235,15 +236,30 @@ class Queue(Atom):
         self.discipline = discipline or FIFO()
         self.router = router or FirstAvailable()
 
+        self.overflow = overflow
+        valid_overflow = {"error", "drop"}
+
+        if overflow not in valid_overflow:
+            raise ValueError(
+                f"Invalid overflow policy {overflow!r}. "
+                f"Choose from: {sorted(valid_overflow)}"
+            )
+
         self.entities = []
 
         self.stats = Statistics()
 
     def receive(self, entity):
+
         if self.is_full():
-            raise RuntimeError(
-                f"Queue {self.name!r} is full"
-            )
+
+            if self.overflow == "error":
+                raise RuntimeError(
+                    f"Queue {self.name!r} is full"
+                )
+
+            elif self.overflow == "drop":
+                return
 
         if self.model is not None:
             entity.queue_entry_time = (
