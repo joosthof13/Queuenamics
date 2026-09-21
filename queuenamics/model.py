@@ -15,9 +15,14 @@ class Connection:
 
     def send(self, entity):
         if not self.enabled:
-            return
+            return True
 
-        self.destination.receive(entity)
+        result = self.destination.receive(entity)
+
+        if result is False:
+            return False
+
+        return True
 
     def __repr__(self):
         return (

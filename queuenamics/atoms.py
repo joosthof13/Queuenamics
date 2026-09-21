@@ -17,7 +17,12 @@ class Atom:
 
     def send(self, entity):
         for connection in self.outputs:
-            connection.send(entity)
+            accepted = connection.send(entity)
+
+            if accepted is False:
+                return False
+
+        return True
 
     def reset(self):
         pass
@@ -46,6 +51,7 @@ class Source(Atom):
 
         self.active = False
         self.entities_created = 0
+        self.pending_entity = None
 
     def start(self):
         if (
@@ -76,25 +82,45 @@ class Source(Atom):
         if not self.active:
             return
 
-        # Stop if the maximum has been reached
-        if (
-            self.max_arrivals is not None
-            and self.entities_created >= self.max_arrivals
-        ):
-            self.active = False
+        # If an entity is already waiting because an output
+        # is blocked, try sending it again.
+        if self.pending_entity is not None:
+            entity = self.pending_entity
+        else:
+            # Stop if the maximum has been reached.
+            if (
+                self.max_arrivals is not None
+                and self.entities_created >= self.max_arrivals
+            ):
+                self.active = False
+                return
+
+            entity = Entity(
+                entity_type=self.entity_type,
+                creation_time=self.model.simulation.time,
+            )
+
+            entity.attributes = dict(self.attributes)
+
+            self.entities_created += 1
+
+        accepted = self.send(entity)
+
+        if not accepted:
+            # Keep the entity until the destination can accept it.
+            self.pending_entity = entity
+
+            self.model.simulation.schedule(
+                time=self.model.simulation.time + 0.01,
+                action=self.generate,
+            )
+
             return
 
-        entity = Entity(
-            entity_type=self.entity_type,
-            creation_time=self.model.simulation.time,
-        )
+        # Entity was successfully sent.
+        self.pending_entity = None
 
-        entity.attributes = dict(self.attributes)
-
-        self.entities_created += 1
-        self.send(entity)
-
-        # Schedule subsequent arrivals using the arrival distribution
+        # Schedule subsequent arrivals.
         if (
             self.max_arrivals is None
             or self.entities_created < self.max_arrivals
@@ -124,6 +150,7 @@ class Source(Atom):
     def reset(self):
         self.active = False
         self.entities_created = 0
+        self.pending_entity = None
 
     def reset_statistics(self):
         self.entities_created = 0
@@ -223,7 +250,7 @@ class Sink(Atom):
 
 class Queue(Atom):
 
-    VALID_OVERFLOW = {"error", "drop", "route"}
+    VALID_OVERFLOW = {"error", "drop", "route", "block"}
 
     def __init__(
         self,
@@ -252,14 +279,13 @@ class Queue(Atom):
 
     def receive(self, entity):
         if self.is_full():
-
             if self.overflow == "error":
                 raise RuntimeError(
                     f"Queue {self.name!r} is full"
                 )
 
             elif self.overflow == "drop":
-                return
+                return True
 
             elif self.overflow == "route":
                 if not self.overflow_outputs:
@@ -270,7 +296,10 @@ class Queue(Atom):
 
                 connection = self.overflow_outputs[0]
                 connection.send(entity)
-                return
+                return True
+
+            elif self.overflow == "block":
+                return False
 
         if self.model is not None:
             entity.queue_entry_time = (
@@ -293,6 +322,8 @@ class Queue(Atom):
         )
 
         self._try_send()
+
+        return True
 
     def add(self, entity):
         self.receive(entity)
@@ -390,6 +421,17 @@ class Queue(Atom):
         )
 
         connection.send(entity)
+        self._notify_blocked_inputs()
+
+    def _notify_blocked_inputs(self):
+        for connection in self.inputs:
+            source = connection.source
+
+            if (
+                hasattr(source, "pending_entity")
+                and source.pending_entity is not None
+            ):
+                source.generate()
 
     def length(self):
         return len(self.entities)
