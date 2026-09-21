@@ -402,13 +402,13 @@ class Model:
         info = []
 
         def error(message):
-            errors.append(f"ERROR: {message}")
+            errors.append(message)
 
         def warning(message):
-            warnings.append(f"WARNING: {message}")
+            warnings.append(message)
 
         def information(message):
-            info.append(f"INFO: {message}")
+            info.append(message)
 
         # ---------------------------------------------------------
         # Model-level validation
@@ -1152,3 +1152,59 @@ class Model:
             "warnings": warnings,
             "info": info,
         }
+    
+    def print_validation(self, validation=None):
+        """
+        Print a formatted model validation report.
+
+        Parameters
+        ----------
+        validation : dict, optional
+            Validation result returned by Model.validate().
+            If omitted, the model is validated automatically.
+        """
+        if validation is None:
+            validation = self.validate()
+
+        print()
+        print("=== Model Validation ===")
+        print()
+
+        if validation["valid"]:
+            print("Status: VALID")
+        else:
+            print("Status: INVALID")
+
+        print()
+
+        # Errors
+        print("Errors:")
+        if validation["errors"]:
+            for error in validation["errors"]:
+                print(f"  ✗ {error}")
+        else:
+            print("  None")
+
+        print()
+
+        # Warnings
+        print("Warnings:")
+        if validation["warnings"]:
+            for warning in validation["warnings"]:
+                print(f"  ⚠ {warning}")
+        else:
+            print("  None")
+
+        print()
+
+        # Information
+        print("Info:")
+        if validation["info"]:
+            for message in validation["info"]:
+                print(f"  • {message}")
+        else:
+            print("  None")
+
+        print()
+        print("========================")
+        print()
