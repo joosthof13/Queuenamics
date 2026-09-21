@@ -222,35 +222,35 @@ class Sink(Atom):
 
 
 class Queue(Atom):
+
+    VALID_OVERFLOW = {"error", "drop", "route"}
+
     def __init__(
         self,
         name,
         capacity=None,
         discipline=None,
         router=None,
-        overflow="error"
+        overflow="error",
     ):
         super().__init__(name)
 
         self.capacity = capacity
         self.discipline = discipline or FIFO()
         self.router = router or FirstAvailable()
-
         self.overflow = overflow
-        valid_overflow = {"error", "drop"}
 
-        if overflow not in valid_overflow:
+        if overflow not in self.VALID_OVERFLOW:
             raise ValueError(
                 f"Invalid overflow policy {overflow!r}. "
-                f"Choose from: {sorted(valid_overflow)}"
+                f"Choose from: {sorted(self.VALID_OVERFLOW)}"
             )
 
         self.entities = []
-
+        self.overflow_outputs = []
         self.stats = Statistics()
 
     def receive(self, entity):
-
         if self.is_full():
 
             if self.overflow == "error":
@@ -259,6 +259,17 @@ class Queue(Atom):
                 )
 
             elif self.overflow == "drop":
+                return
+
+            elif self.overflow == "route":
+                if not self.overflow_outputs:
+                    raise RuntimeError(
+                        f"Queue {self.name!r} is full and "
+                        "has no overflow connection"
+                    )
+
+                connection = self.overflow_outputs[0]
+                connection.send(entity)
                 return
 
         if self.model is not None:

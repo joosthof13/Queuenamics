@@ -63,6 +63,27 @@ class Model:
         self.connections.append(connection)
 
         return connection
+    
+    def connect_overflow(self, source, destination):
+        self._register_atom(source)
+        self._register_atom(destination)
+
+        connection = Connection(
+            source,
+            destination,
+        )
+
+        if not hasattr(source, "overflow_outputs"):
+            raise TypeError(
+                f"Atom {source.name!r} does not support overflow connections."
+            )
+
+        source.overflow_outputs.append(connection)
+        destination.inputs.append(connection)
+
+        self.connections.append(connection)
+
+        return connection
 
     def _register_atom(self, atom):
         if atom not in self.atoms:
@@ -369,6 +390,15 @@ class Model:
                 ):
                     errors.append(
                         f"Queue {atom.name!r} has invalid capacity."
+                    )
+
+                if (
+                    atom.overflow == "route"
+                    and not atom.overflow_outputs
+                ):
+                    errors.append(
+                        f"Queue {atom.name!r} uses overflow='route' "
+                        "but has no overflow connection."
                     )
 
             if atom.__class__.__name__ == "Server":
