@@ -1,5 +1,6 @@
 from queuenamics.entities import Entity
 from queuenamics.disciplines import FIFO, Discipline
+from queuenamics.input_strategies import AnyInputChannel
 from queuenamics.stats import Statistics
 from queuenamics.routing import FirstAvailable
 
@@ -82,45 +83,47 @@ class Source(Atom):
         if not self.active:
             return
 
-        # If an entity is already waiting because an output
-        # is blocked, try sending it again.
+        # A pending entity is already waiting for Queue admission.
         if self.pending_entity is not None:
-            entity = self.pending_entity
-        else:
-            # Stop if the maximum has been reached.
-            if (
-                self.max_arrivals is not None
-                and self.entities_created >= self.max_arrivals
-            ):
-                self.active = False
+            return
+
+        # Stop if the maximum has been reached.
+        if (
+            self.max_arrivals is not None
+            and self.entities_created >= self.max_arrivals
+        ):
+            self.active = False
+            return
+
+        entity = Entity(
+            entity_type=self.entity_type,
+            creation_time=self.model.simulation.time,
+        )
+
+        entity.attributes = dict(self.attributes)
+
+        self.entities_created += 1
+
+        # A Queue controls admission of its input channels.
+        if len(self.outputs) == 1:
+            destination = self.outputs[0].destination
+
+            if isinstance(destination, Queue):
+                self.pending_entity = entity
+                destination._notify_blocked_inputs()
                 return
 
-            entity = Entity(
-                entity_type=self.entity_type,
-                creation_time=self.model.simulation.time,
-            )
-
-            entity.attributes = dict(self.attributes)
-
-            self.entities_created += 1
-
+        # Preserve normal push behaviour for other destinations.
         accepted = self.send(entity)
 
         if not accepted:
-            # Keep the entity until the destination can accept it.
             self.pending_entity = entity
-
-            self.model.simulation.schedule(
-                time=self.model.simulation.time + 0.01,
-                action=self.generate,
-            )
-
             return
 
         # Entity was successfully sent.
         self.pending_entity = None
 
-        # Schedule subsequent arrivals.
+        # Schedule the next arrival.
         if (
             self.max_arrivals is None
             or self.entities_created < self.max_arrivals
@@ -259,12 +262,18 @@ class Queue(Atom):
         discipline=None,
         router=None,
         overflow="error",
+        input_strategy = None
     ):
         super().__init__(name)
 
         self.capacity = capacity
         self.discipline = discipline or FIFO()
         self.router = router or FirstAvailable()
+        self.input_strategy = (
+            input_strategy
+            if input_strategy is not None
+            else AnyInputChannel()
+        )
         self.overflow = overflow
 
         if overflow not in self.VALID_OVERFLOW:
@@ -276,6 +285,51 @@ class Queue(Atom):
         self.entities = []
         self.overflow_outputs = []
         self.stats = Statistics()
+
+    def _accept_from_input(self, connection):
+        source = connection.source
+
+        if not hasattr(source, "pending_entity"):
+            return False
+
+        if source.pending_entity is None:
+            return False
+
+        # Do not admit anything if the Queue itself cannot accept it.
+        if self.is_full():
+            return False
+
+        entity = source.pending_entity
+
+        # Clear the pending entity BEFORE receiving it.
+        # This prevents recursive notifications from admitting
+        # the same entity multiple times.
+        source.pending_entity = None
+
+        accepted = self.receive(entity)
+
+        if not accepted:
+            # Restore the entity if the Queue rejected it.
+            source.pending_entity = entity
+            return False
+
+        # The source can now schedule its next arrival.
+        if (
+            source.active
+            and (
+                source.max_arrivals is None
+                or source.entities_created < source.max_arrivals
+            )
+        ):
+            source._schedule_next()
+
+        elif (
+            source.max_arrivals is not None
+            and source.entities_created >= source.max_arrivals
+        ):
+            source.active = False
+
+        return True
 
     def receive(self, entity):
         if self.is_full():
@@ -424,14 +478,12 @@ class Queue(Atom):
         self._notify_blocked_inputs()
 
     def _notify_blocked_inputs(self):
-        for connection in self.inputs:
-            source = connection.source
+        connection = self.input_strategy.select(self.inputs)
 
-            if (
-                hasattr(source, "pending_entity")
-                and source.pending_entity is not None
-            ):
-                source.generate()
+        if connection is None:
+            return
+
+        self._accept_from_input(connection)
 
     def length(self):
         return len(self.entities)
@@ -509,6 +561,7 @@ class Queue(Atom):
     def reset(self):
         self.entities.clear()
         self.stats.reset()
+        self.input_strategy.reset()
 
 
 class Server(Atom):
