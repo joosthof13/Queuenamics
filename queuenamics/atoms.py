@@ -1395,3 +1395,12 @@ class Release(Atom):
 
     def reset(self):
         self.released = 0
+
+class Delay(Atom):
+    pass
+
+class Batch(Atom):
+    pass
+
+class Unpack(Atom):
+    pass
