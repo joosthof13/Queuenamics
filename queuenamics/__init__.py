@@ -75,7 +75,7 @@ from queuenamics.stats import (
 )
 
 
-__version__ = "0.8.5-dev0"
+__version__ = "0.8.5-dev1"
 
 
 __all__ = [
