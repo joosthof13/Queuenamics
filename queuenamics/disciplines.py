@@ -73,3 +73,20 @@ class ShortestProcessingTime(Discipline):
                 self.attribute, float("inf")
             ),
         )
+    
+class LongestProcessingTime(Discipline):
+
+    def __init__(self, attribute="service_time"):
+        super().__init__()
+        self.attribute = attribute
+
+    def select(self, entities):
+        if not entities:
+            return None
+
+        return max(
+            entities,
+            key=lambda entity: entity.attributes.get(
+                self.attribute, 0
+            ),
+        )
