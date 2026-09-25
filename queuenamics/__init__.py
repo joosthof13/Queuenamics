@@ -43,6 +43,7 @@ from queuenamics.disciplines import (
     Random,
     Priority,
     ShortestProcessingTime,
+    LongestProcessingTime,
 )
 
 from queuenamics.routing import (
@@ -126,6 +127,7 @@ __all__ = [
     "Random",
     "Priority",
     "ShortestProcessingTime",
+    "LongestProcessingTime",
 
     # Routing
     "Router",
